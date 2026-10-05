@@ -70,3 +70,7 @@ Click **Make my plan** to fit your unfinished assignments into free time:
 - **Long assignments:** split into blocks of up to 1 hour, with 10-minute breaks between.
 
 Each assignment shows a **⏱ time estimate**. It starts as a guess from the type and points; change it and the app remembers it. To change school hours, bedtime or limits, edit `PLAN` at the top of `planner.js`.
+
+## Install as a Mac app
+
+Open https://classroommanager.site in **Google Chrome**, then click the install icon at the right end of the address bar (or ⋮ menu → *Cast, save and share → Install page as app…*). It gets its own window, Dock icon and Launchpad entry, and opens with your saved data even offline.

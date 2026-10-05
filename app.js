@@ -841,5 +841,8 @@ if (accessToken) {
   showSignedInButtons();
   load();
 }
+// Makes the site installable as an app and able to open offline.
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
 // Keep the "due in" countdowns and missing status fresh if the tab stays open.
 setInterval(() => items.length && render(), 60e3);
