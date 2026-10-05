@@ -22,9 +22,10 @@ let accessToken = null;
 let tokenClient = null;
 let items = [];
 let view = "list";
-// Missing assignments the user chose to hide, remembered in this browser.
-const hidden = new Set((() => { try { return JSON.parse(localStorage.getItem("hidden")) || []; } catch { return []; } })());
-function saveHidden() { try { localStorage.setItem("hidden", JSON.stringify([...hidden])); } catch {} }
+// Assignments the user removed, remembered in this browser. (Stored under "hidden"
+// so items hidden with the older Hide button stay removed.)
+const removed = new Set((() => { try { return JSON.parse(localStorage.getItem("hidden")) || []; } catch { return []; } })());
+function saveRemoved() { try { localStorage.setItem("hidden", JSON.stringify([...removed])); } catch {} }
 let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedDay = new Date(new Date().setHours(0, 0, 0, 0));
 let calMode = (() => { try { return localStorage.getItem("calMode") === "week" ? "week" : "month"; } catch { return "month"; } })();
@@ -188,18 +189,21 @@ function render() {
   const course = $("courseFilter").value;
   const showDone = $("showDone").checked;
   const showMissing = $("showMissing").checked;
+  const showRemoved = $("showRemoved").checked;
 
-  const hiddenCount = items.filter((i) => i.tier === "missing" && hidden.has(i.id)).length;
-  $("unhideBtn").textContent = `Unhide ${hiddenCount} hidden`;
-  $("unhideBtn").classList.toggle("hidden", !hiddenCount || !showMissing);
+  items.forEach((i) => (i.removed = removed.has(i.id)));
+  const removedCount = items.filter((i) => i.removed).length;
+  $("removedCount").textContent = removedCount ? ` (${removedCount})` : "";
 
   const visible = items
-    .filter((i) => i.tier !== "missing" || (showMissing && !hidden.has(i.id)))
+    .filter((i) => !i.removed || showRemoved)
+    .filter((i) => i.tier !== "missing" || showMissing)
     .filter((i) => !course || i.course === course)
     .filter((i) => !q || i.title.toLowerCase().includes(q) || i.course.toLowerCase().includes(q))
     .sort(compare);
 
-  const open = visible.filter((i) => i.tier !== "done");
+  // Removed items never count toward the totals, even while shown.
+  const open = visible.filter((i) => i.tier !== "done" && !i.removed);
   $("sMissing").textContent = open.filter((i) => i.tier === "missing").length;
   $("sUrgent").textContent = open.filter((i) => i.tier === "urgent").length;
   $("sWeek").textContent = open.filter((i) => i.tier === "urgent" || i.tier === "soon").length;
@@ -225,8 +229,8 @@ function renderList(visible, open, now, showDone, filtered) {
     lists.appendChild(h);
     const ol = document.createElement("ol");
     for (const item of group) {
-      if (tier !== "done") rank++;
-      ol.appendChild(renderItem(item, tier === "done" ? "✓" : rank, now));
+      if (tier !== "done" && !item.removed) rank++;
+      ol.appendChild(renderItem(item, tier === "done" ? "✓" : item.removed ? "–" : rank, now));
     }
     lists.appendChild(ol);
   }
@@ -298,7 +302,7 @@ function renderCalendar(visible, now) {
 
     // Month view fits 3 per day; week view has room to show everything with due times.
     (week ? due : due.slice(0, 3)).forEach((i) => {
-      const a = el("a", `chip t-${i.tier}`, week ? `${fmtTime(i.due)} · ${i.title}` : i.title);
+      const a = el("a", `chip t-${i.tier}${i.removed ? " removed" : ""}`, week ? `${fmtTime(i.due)} · ${i.title}` : i.title);
       a.href = i.link;
       a.target = "_blank";
       a.rel = "noopener";
@@ -403,7 +407,7 @@ function button(text, onclick, label) {
 
 function renderItem(item, rank, now) {
   const li = document.createElement("li");
-  li.className = `item t-${item.tier}`;
+  li.className = `item t-${item.tier}${item.removed ? " removed" : ""}`;
 
   const r = document.createElement("div");
   r.className = "rank";
@@ -437,16 +441,15 @@ function renderItem(item, rank, now) {
   openLink.className = "open";
   openLink.textContent = "Open ↗";
   right.append(badge, openLink);
-  if (item.tier === "missing") {
-    const hide = el("button", "hide-btn", "Hide");
-    hide.title = "Hide this missing assignment";
-    hide.onclick = () => {
-      hidden.add(item.id);
-      saveHidden();
-      render();
-    };
-    right.append(hide);
-  }
+  const toggle = el("button", "hide-btn", item.removed ? "Restore" : "Remove");
+  toggle.title = item.removed ? "Put this back in your list" : "Remove from your list (turn on Show removed to see it again)";
+  toggle.onclick = () => {
+    if (item.removed) removed.delete(item.id);
+    else removed.add(item.id);
+    saveRemoved();
+    render();
+  };
+  right.append(toggle);
 
   li.append(r, body, right);
   return li;
@@ -528,11 +531,7 @@ $("showMissing").addEventListener("input", () => {
   try { localStorage.setItem("showMissing", $("showMissing").checked ? "1" : "0"); } catch {}
   render();
 });
-$("unhideBtn").onclick = () => {
-  hidden.clear();
-  saveHidden();
-  render();
-};
+$("showRemoved").addEventListener("input", render);
 try { if (localStorage.getItem("showMissing") === "0") $("showMissing").checked = false; } catch {}
 // Keep the "due in" countdowns and missing status fresh if the tab stays open.
 setInterval(() => items.length && render(), 60e3);

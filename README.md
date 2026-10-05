@@ -31,7 +31,7 @@ When Google says "Google hasn't verified this app", click **Continue**. You're t
 
 | Tier | Rule | Order within the tier |
 |---|---|---|
-| Missing | Past due and not turned in | Most overdue first, then most points. Hide one with its **Hide** button, or all with **Show missing** |
+| Missing | Past due and not turned in | Most overdue first, then most points. Turn off all of them with **Show missing** |
 | Due in 48 hrs | Due within 2 days | Soonest first |
 | Due this week | Due within 7 days | Soonest first |
 | Coming up | Due later | Soonest first |
@@ -45,3 +45,7 @@ To change the rules, edit `tierOf()` and `compare()` in `app.js`.
 - **"Access blocked" / "admin_policy_enforced" / 403 errors:** many schools block outside apps from reading Classroom data on school accounts. If that happens, ask your school's IT admin to allow the app, or check whether your school allows it at all.
 - **"redirect_uri_mismatch" or "origin not allowed":** make sure `http://localhost:8000` is listed exactly under Authorized JavaScript origins. It can take a few minutes after saving to start working.
 - **Sign-in expired:** Google tokens last about an hour. Click **Sign in** again.
+
+## Removing assignments
+
+Click **Remove** on any assignment to take it off your list, calendar and counts. Check **Show removed** to see removed items (faded, with a **Restore** button). Removed items are remembered in this browser only.
