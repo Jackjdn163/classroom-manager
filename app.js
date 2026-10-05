@@ -27,6 +27,7 @@ const hidden = new Set((() => { try { return JSON.parse(localStorage.getItem("hi
 function saveHidden() { try { localStorage.setItem("hidden", JSON.stringify([...hidden])); } catch {} }
 let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedDay = new Date(new Date().setHours(0, 0, 0, 0));
+let calMode = (() => { try { return localStorage.getItem("calMode") === "week" ? "week" : "month"; } catch { return "month"; } })();
 
 // ---------- Google sign-in ----------
 
@@ -249,27 +250,40 @@ function renderCalendar(visible, now) {
   const cal = $("calendar");
   cal.innerHTML = "";
 
+  const week = calMode === "week";
   const head = el("div", "cal-head");
   const nav = el("div");
-  nav.style.cssText = "display:flex; gap:6px;";
-  nav.append(
-    button("‹", () => shiftMonth(-1), "Previous month"),
-    button("Today", () => { calMonth = startOfMonth(new Date()); selectedDay = startOfDay(new Date()); render(); }),
-    button("›", () => shiftMonth(1), "Next month"),
+  nav.style.cssText = "display:flex; gap:6px; flex-wrap:wrap;";
+  const unit = week ? "week" : "month";
+  const modes = el("div", "seg");
+  modes.append(
+    modeButton("Month", "month"),
+    modeButton("Week", "week"),
   );
-  head.append(el("h3", "", calMonth.toLocaleString([], { month: "long", year: "numeric" })), nav);
+  nav.append(
+    modes,
+    button("‹", () => shiftCal(-1), `Previous ${unit}`),
+    button("Today", () => { calMonth = startOfMonth(new Date()); selectedDay = startOfDay(new Date()); render(); }),
+    button("›", () => shiftCal(1), `Next ${unit}`),
+  );
 
-  const grid = el("div", "cal-grid");
+  // Week view shows the week containing the selected day; month view shows calMonth.
+  const first = week
+    ? new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate() - selectedDay.getDay())
+    : new Date(calMonth.getFullYear(), calMonth.getMonth(), 1 - calMonth.getDay());
+  const totalDays = week ? 7 : 42;
+  head.append(el("h3", "", week ? weekTitle(first) : calMonth.toLocaleString([], { month: "long", year: "numeric" })), nav);
+
+  const grid = el("div", week ? "cal-grid week" : "cal-grid");
   for (let d = 0; d < 7; d++) {
     grid.append(el("div", "cal-dow", new Date(2023, 0, 1 + d).toLocaleString([], { weekday: "short" })));
   }
 
   const todayKey = dayKey(new Date(now));
   const selKey = dayKey(selectedDay);
-  const first = new Date(calMonth.getFullYear(), calMonth.getMonth(), 1 - calMonth.getDay());
-  for (let n = 0; n < 42; n++) {
+  for (let n = 0; n < totalDays; n++) {
     const day = new Date(first.getFullYear(), first.getMonth(), first.getDate() + n);
-    if (n % 7 === 0 && n >= 28 && day.getMonth() !== calMonth.getMonth()) break; // drop empty trailing week
+    if (!week && n % 7 === 0 && n >= 28 && day.getMonth() !== calMonth.getMonth()) break; // drop empty trailing week
     const k = dayKey(day);
     const due = (byDay.get(k) || []).sort(compare);
 
@@ -277,13 +291,14 @@ function renderCalendar(visible, now) {
     cell.tabIndex = 0;
     cell.setAttribute("role", "button");
     cell.setAttribute("aria-label", `${day.toDateString()}, ${due.length} due`);
-    if (day.getMonth() !== calMonth.getMonth()) cell.classList.add("other");
+    if (!week && day.getMonth() !== calMonth.getMonth()) cell.classList.add("other");
     if (k === todayKey) cell.classList.add("today");
     if (k === selKey) cell.classList.add("selected");
-    cell.append(el("span", "num", day.getDate()));
+    cell.append(el("span", "num", week ? day.toLocaleDateString([], { weekday: "short", day: "numeric" }) : day.getDate()));
 
-    due.slice(0, 3).forEach((i) => {
-      const a = el("a", `chip t-${i.tier}`, i.title);
+    // Month view fits 3 per day; week view has room to show everything with due times.
+    (week ? due : due.slice(0, 3)).forEach((i) => {
+      const a = el("a", `chip t-${i.tier}`, week ? `${fmtTime(i.due)} · ${i.title}` : i.title);
       a.href = i.link;
       a.target = "_blank";
       a.rel = "noopener";
@@ -291,7 +306,7 @@ function renderCalendar(visible, now) {
       a.onclick = (e) => e.stopPropagation();
       cell.append(a);
     });
-    if (due.length > 3) cell.append(el("span", "more", `+${due.length - 3} more`));
+    if (!week && due.length > 3) cell.append(el("span", "more", `+${due.length - 3} more`));
     if (due.length) {
       const dots = el("div", "dots");
       due.forEach((i) => dots.append(el("span", `dot t-${i.tier}`)));
@@ -300,7 +315,7 @@ function renderCalendar(visible, now) {
 
     const select = () => {
       selectedDay = day;
-      if (day.getMonth() !== calMonth.getMonth()) calMonth = startOfMonth(day);
+      calMonth = startOfMonth(day);
       render();
     };
     cell.onclick = select;
@@ -328,9 +343,36 @@ function renderCalendar(visible, now) {
   cal.append(head, grid, h, detail);
 }
 
-function shiftMonth(delta) {
-  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + delta, 1);
+function shiftCal(delta) {
+  if (calMode === "week") {
+    selectedDay = new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate() + 7 * delta);
+    calMonth = startOfMonth(selectedDay);
+  } else {
+    calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + delta, 1);
+  }
   render();
+}
+
+function modeButton(text, mode) {
+  const b = button(text, () => {
+    calMode = mode;
+    try { localStorage.setItem("calMode", mode); } catch {}
+    // Keep the selected day on screen when switching to week view.
+    if (mode === "week" && startOfMonth(selectedDay).getTime() !== calMonth.getTime()) selectedDay = calMonth;
+    render();
+  });
+  if (calMode === mode) b.classList.add("active");
+  return b;
+}
+
+function weekTitle(start) {
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+  const md = { month: "short", day: "numeric" };
+  return `${start.toLocaleDateString([], md)} – ${end.toLocaleDateString([], start.getMonth() === end.getMonth() ? { day: "numeric" } : md)}, ${end.getFullYear()}`;
+}
+
+function fmtTime(d) {
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 function setView(v) {
