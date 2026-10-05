@@ -49,3 +49,13 @@ To change the rules, edit `tierOf()` and `compare()` in `app.js`.
 ## Removing assignments
 
 Click **Remove** on any assignment to take it off your list, calendar and counts. Check **Show removed** to see removed items (faded, with a **Restore** button). Removed items are remembered in this browser only.
+
+## Saved data
+
+The app saves your last-loaded assignments, calendar events and filter settings in this browser, so a refresh shows them right away. You stay signed in for about an hour while the tab is open. **Sign out** clears the saved data from the browser. Use it on shared computers.
+
+## Google Calendars
+
+In Calendar view, click **Calendars ▾** and check the Google Calendars to show next to your assignments. This includes calendars you subscribe to. To add a calendar by link (.ics), add it in Google Calendar under *Other calendars → + → From URL*, then click **Refresh**.
+
+This needs the **Google Calendar API** turned on in your Google Cloud project (*APIs & Services → Library → Google Calendar API → Enable*).

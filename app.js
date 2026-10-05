@@ -4,8 +4,10 @@
 const SCOPES = [
   "https://www.googleapis.com/auth/classroom.courses.readonly",
   "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+  "https://www.googleapis.com/auth/calendar.readonly",
 ].join(" ");
 const API = "https://classroom.googleapis.com/v1/";
+const CAL_API = "https://www.googleapis.com/calendar/v3/";
 const HOUR = 3600e3, DAY = 24 * HOUR;
 
 const TIERS = {
@@ -28,6 +30,12 @@ const removed = new Set((() => { try { return JSON.parse(localStorage.getItem("h
 function saveRemoved() { try { localStorage.setItem("hidden", JSON.stringify([...removed])); } catch {} }
 let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedDay = new Date(new Date().setHours(0, 0, 0, 0));
+// Google Calendars: the user's calendar list, which ones they chose to show, and their events.
+let calendars = []; // { id, name, color }
+let events = [];    // { calId, title, start, end, allDay, link }
+const shownCals = new Set((() => { try { return JSON.parse(localStorage.getItem("shownCals")) || []; } catch { return []; } })());
+function saveShownCals() { try { localStorage.setItem("shownCals", JSON.stringify([...shownCals])); } catch {} }
+let calPanelOpen = false;
 let calMode = (() => { try { return localStorage.getItem("calMode") === "week" ? "week" : "month"; } catch { return "month"; } })();
 
 // ---------- Google sign-in ----------
@@ -46,17 +54,45 @@ function signIn() {
     callback: (resp) => {
       if (resp.error) return showMessage("Sign-in failed: " + resp.error, true);
       accessToken = resp.access_token;
-      $("signInBtn").classList.add("hidden");
-      $("demoBtn").classList.add("hidden");
-      $("refreshBtn").classList.remove("hidden");
+      saveToken(resp.access_token, resp.expires_in);
+      showSignedInButtons();
       load();
     },
   });
   tokenClient.requestAccessToken();
 }
 
-async function api(path, params = {}) {
-  const url = new URL(API + path);
+function showSignedInButtons() {
+  $("signInBtn").classList.add("hidden");
+  $("demoBtn").classList.add("hidden");
+  $("refreshBtn").classList.remove("hidden");
+  $("signOutBtn").classList.remove("hidden");
+}
+
+function signOut() {
+  if (accessToken && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(accessToken, () => {});
+  try {
+    sessionStorage.removeItem("token");
+    localStorage.removeItem("cache");
+  } catch {}
+  location.reload();
+}
+
+// Google access tokens last ~1 hour. Keeping it in sessionStorage means a page refresh
+// stays signed in, but closing the tab signs you out.
+function saveToken(token, expiresIn) {
+  try { sessionStorage.setItem("token", JSON.stringify({ token, exp: Date.now() + (expiresIn - 60) * 1000 })); } catch {}
+}
+function restoreToken() {
+  try {
+    const t = JSON.parse(sessionStorage.getItem("token"));
+    if (t && t.exp > Date.now()) return t.token;
+  } catch {}
+  return null;
+}
+
+async function api(path, params = {}, base = API) {
+  const url = new URL(base + path);
   for (const [k, v] of Object.entries(params)) {
     [].concat(v).forEach((val) => url.searchParams.append(k, val));
   }
@@ -108,15 +144,26 @@ async function load() {
 
     items = perCourse.flat();
     fillCourseFilter(courses.map((c) => c.name));
+
+    let calError = null;
+    try {
+      await loadCalendars();
+    } catch (e) {
+      calError = e;
+    }
+
     render();
+    saveCache();
     setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${courses.length} classes · ${items.length} assignments`);
-    if (skipped.length) showMessage("Couldn't read assignments from: " + skipped.join(", "));
+    const problems = [];
+    if (skipped.length) problems.push("Couldn't read assignments from: " + skipped.join(", "));
+    if (calError) problems.push(calendarErrorText(calError));
+    if (problems.length) showMessage(problems.join("<br><br>"));
   } catch (e) {
     if (e.status === 401) {
       accessToken = null;
-      showMessage("Your sign-in expired. Click Sign in again.", true);
-      $("signInBtn").classList.remove("hidden");
-      $("refreshBtn").classList.add("hidden");
+      try { sessionStorage.removeItem("token"); } catch {}
+      showMessage("Your sign-in expired. Click Refresh to sign in again.", true);
     } else if (e.status === 403) {
       showMessage("Google blocked access: " + e.message + "<br><br>If this is a school account, your school may block outside apps from reading Classroom. See README.md → Troubleshooting.", true);
     } else {
@@ -125,6 +172,148 @@ async function load() {
     setStatus("");
   } finally {
     $("refreshBtn").disabled = false;
+  }
+}
+
+// ---------- Google Calendar ----------
+
+async function calListAll(path, params = {}) {
+  const out = [];
+  let pageToken;
+  do {
+    const data = await api(path, { ...params, ...(pageToken && { pageToken }) }, CAL_API);
+    out.push(...(data.items || []));
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return out;
+}
+
+async function loadCalendars() {
+  const list = await calListAll("users/me/calendarList");
+  calendars = list
+    .map((c) => ({ id: c.id, name: c.summaryOverride || c.summary, color: c.backgroundColor || "#888", primary: !!c.primary }))
+    .sort((a, b) => (b.primary - a.primary) || a.name.localeCompare(b.name));
+  const ids = calendars.filter((c) => shownCals.has(c.id)).map((c) => c.id);
+  events = (await Promise.all(ids.map(fetchEvents))).flat();
+}
+
+// Loads events from 2 months back to 6 months ahead.
+async function fetchEvents(calId) {
+  const now = new Date();
+  const list = await calListAll(`calendars/${encodeURIComponent(calId)}/events`, {
+    timeMin: new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString(),
+    timeMax: new Date(now.getFullYear(), now.getMonth() + 7, 1).toISOString(),
+    singleEvents: true,
+    orderBy: "startTime",
+    maxResults: 2500,
+  });
+  return list.filter((e) => e.status !== "cancelled" && e.start).map((e) => {
+    const allDay = !!e.start.date;
+    return {
+      calId,
+      title: e.summary || "(busy)",
+      start: allDay ? parseLocalDate(e.start.date) : new Date(e.start.dateTime),
+      end: allDay ? parseLocalDate(e.end.date) : new Date(e.end?.dateTime || e.start.dateTime),
+      allDay,
+      link: e.htmlLink,
+    };
+  });
+}
+
+// All-day events use plain dates ("2026-10-05") that must stay in local time.
+function parseLocalDate(s) {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+async function toggleCalendar(id, on) {
+  if (on) shownCals.add(id);
+  else shownCals.delete(id);
+  saveShownCals();
+  if (on && !events.some((e) => e.calId === id)) {
+    if (!accessToken) {
+      render();
+      return signIn(); // signing in reloads everything, including this calendar
+    }
+    try {
+      events.push(...await fetchEvents(id));
+      saveCache();
+    } catch (e) {
+      showMessage(calendarErrorText(e), true);
+    }
+  }
+  render();
+}
+
+function calendarErrorText(e) {
+  if (e.status === 403) {
+    return "Couldn't load your Google Calendars. Make sure the <b>Google Calendar API</b> is enabled in your Google Cloud project, and that you allowed calendar access when signing in. (" + e.message + ")";
+  }
+  return "Couldn't load your Google Calendars: " + e.message;
+}
+
+// Events grouped by local day. Multi-day events appear on every day they cover.
+function eventsByDay() {
+  const map = new Map();
+  for (const e of events) {
+    if (!shownCals.has(e.calId)) continue;
+    let day = startOfDay(e.start);
+    // End is exclusive; a timed event ending exactly at midnight doesn't spill into the next day.
+    const last = e.end > e.start ? new Date(e.end - 1) : e.start;
+    for (let n = 0; day <= last && n < 62; n++) {
+      const k = dayKey(day);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(e);
+      day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+    }
+  }
+  for (const list of map.values()) list.sort((a, b) => (b.allDay - a.allDay) || (a.start - b.start));
+  return map;
+}
+
+function calColor(id) {
+  return calendars.find((c) => c.id === id)?.color || "#888";
+}
+
+function eventTime(e) {
+  return e.allDay ? "All day" : fmtTime(e.start);
+}
+
+// ---------- Saving between visits ----------
+
+function saveCache() {
+  try {
+    localStorage.setItem("cache", JSON.stringify({ at: Date.now(), items, calendars, events }));
+  } catch {}
+}
+
+function restoreCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem("cache"));
+    if (!c) return null;
+    items = c.items.map((i) => ({ ...i, due: i.due ? new Date(i.due) : null }));
+    calendars = c.calendars || [];
+    events = (c.events || []).map((e) => ({ ...e, start: new Date(e.start), end: new Date(e.end) }));
+    fillCourseFilter(items.map((i) => i.course));
+    return new Date(c.at);
+  } catch {
+    return null;
+  }
+}
+
+const PREFS = ["showMissing", "showDone", "showRemoved", "courseFilter"];
+function savePrefs() {
+  const p = {};
+  for (const id of PREFS) p[id] = $(id).type === "checkbox" ? $(id).checked : $(id).value;
+  try { localStorage.setItem("prefs", JSON.stringify(p)); } catch {}
+}
+function restorePrefs() {
+  let p = {};
+  try { p = JSON.parse(localStorage.getItem("prefs")) || {}; } catch {}
+  for (const id of PREFS) {
+    if (!(id in p)) continue;
+    if ($(id).type === "checkbox") $(id).checked = p[id];
+    else if ([...$(id).options].some((o) => o.value === p[id])) $(id).value = p[id];
   }
 }
 
@@ -250,6 +439,7 @@ function renderCalendar(visible, now) {
     if (!byDay.has(k)) byDay.set(k, []);
     byDay.get(k).push(i);
   }
+  const evByDay = eventsByDay();
 
   const cal = $("calendar");
   cal.innerHTML = "";
@@ -270,6 +460,12 @@ function renderCalendar(visible, now) {
     button("Today", () => { calMonth = startOfMonth(new Date()); selectedDay = startOfDay(new Date()); render(); }),
     button("›", () => shiftCal(1), `Next ${unit}`),
   );
+  const calsBtn = button(`Calendars${shownCals.size ? ` (${calendars.filter((c) => shownCals.has(c.id)).length})` : ""} ▾`, () => {
+    calPanelOpen = !calPanelOpen;
+    render();
+  });
+  if (calPanelOpen) calsBtn.classList.add("active-outline");
+  nav.append(calsBtn);
 
   // Week view shows the week containing the selected day; month view shows calMonth.
   const first = week
@@ -277,6 +473,8 @@ function renderCalendar(visible, now) {
     : new Date(calMonth.getFullYear(), calMonth.getMonth(), 1 - calMonth.getDay());
   const totalDays = week ? 7 : 42;
   head.append(el("h3", "", week ? weekTitle(first) : calMonth.toLocaleString([], { month: "long", year: "numeric" })), nav);
+
+  const panel = calPanelOpen ? renderCalPanel() : null;
 
   const grid = el("div", week ? "cal-grid week" : "cal-grid");
   for (let d = 0; d < 7; d++) {
@@ -290,30 +488,49 @@ function renderCalendar(visible, now) {
     if (!week && n % 7 === 0 && n >= 28 && day.getMonth() !== calMonth.getMonth()) break; // drop empty trailing week
     const k = dayKey(day);
     const due = (byDay.get(k) || []).sort(compare);
+    const evs = evByDay.get(k) || [];
 
     const cell = el("div", "cal-day");
     cell.tabIndex = 0;
     cell.setAttribute("role", "button");
-    cell.setAttribute("aria-label", `${day.toDateString()}, ${due.length} due`);
+    cell.setAttribute("aria-label", `${day.toDateString()}, ${due.length} due, ${evs.length} events`);
     if (!week && day.getMonth() !== calMonth.getMonth()) cell.classList.add("other");
     if (k === todayKey) cell.classList.add("today");
     if (k === selKey) cell.classList.add("selected");
     cell.append(el("span", "num", week ? day.toLocaleDateString([], { weekday: "short", day: "numeric" }) : day.getDate()));
 
-    // Month view fits 3 per day; week view has room to show everything with due times.
-    (week ? due : due.slice(0, 3)).forEach((i) => {
-      const a = el("a", `chip t-${i.tier}${i.removed ? " removed" : ""}`, week ? `${fmtTime(i.due)} · ${i.title}` : i.title);
-      a.href = i.link;
+    // Assignments first, then calendar events. Month view fits 3 per day;
+    // week view has room to show everything with times.
+    const chips = [
+      ...due.map((i) => {
+        const a = el("a", `chip t-${i.tier}${i.removed ? " removed" : ""}`, week ? `${fmtTime(i.due)} · ${i.title}` : i.title);
+        a.href = i.link;
+        a.title = `${i.title} · ${i.course}`;
+        return a;
+      }),
+      ...evs.map((e) => {
+        const a = el("a", "chip ev", week ? `${eventTime(e)} · ${e.title}` : e.title);
+        a.href = e.link;
+        a.title = `${e.title} · ${eventTime(e)}`;
+        a.style.setProperty("--ev", calColor(e.calId));
+        return a;
+      }),
+    ];
+    (week ? chips : chips.slice(0, 3)).forEach((a) => {
       a.target = "_blank";
       a.rel = "noopener";
-      a.title = `${i.title} · ${i.course}`;
       a.onclick = (e) => e.stopPropagation();
       cell.append(a);
     });
-    if (!week && due.length > 3) cell.append(el("span", "more", `+${due.length - 3} more`));
-    if (due.length) {
+    if (!week && chips.length > 3) cell.append(el("span", "more", `+${chips.length - 3} more`));
+    if (chips.length) {
       const dots = el("div", "dots");
       due.forEach((i) => dots.append(el("span", `dot t-${i.tier}`)));
+      evs.forEach((e) => {
+        const d = el("span", "dot ev");
+        d.style.setProperty("--ev", calColor(e.calId));
+        dots.append(d);
+      });
       cell.append(dots);
     }
 
@@ -329,6 +546,7 @@ function renderCalendar(visible, now) {
 
   // Selected day's assignments, full detail with links
   const dayItems = (byDay.get(selKey) || []).sort(compare);
+  const dayEvents = evByDay.get(selKey) || [];
   const h = el("h2", "", `${selectedDay.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })} (${dayItems.length})`);
   const detail = el("div");
   if (dayItems.length) {
@@ -338,13 +556,55 @@ function renderCalendar(visible, now) {
   } else {
     detail.append(el("div", "notice", "Nothing due this day."));
   }
+  if (dayEvents.length) {
+    detail.append(el("h2", "", `Events (${dayEvents.length})`));
+    const ol = el("ol");
+    for (const e of dayEvents) {
+      const li = el("li", "item ev-item");
+      li.style.setProperty("--ev", calColor(e.calId));
+      const body = el("div", "body");
+      const a = el("a", "title", e.title);
+      a.href = e.link;
+      a.target = "_blank";
+      a.rel = "noopener";
+      const cal = calendars.find((c) => c.id === e.calId);
+      body.append(a, el("div", "meta", `${eventTime(e)}${cal ? " · " + cal.name : ""}`));
+      li.append(body);
+      ol.append(li);
+    }
+    detail.append(ol);
+  }
   const noDate = visible.filter((i) => i.tier === "nodate").length;
   if (noDate) {
     const note = el("p", "sub", `${noDate} assignment${noDate > 1 ? "s have" : " has"} no due date. See List view.`);
     detail.append(note);
   }
 
-  cal.append(head, grid, h, detail);
+  cal.append(...[head, panel, grid, h, detail].filter(Boolean));
+}
+
+function renderCalPanel() {
+  const panel = el("div", "cal-panel");
+  if (!calendars.length) {
+    panel.append(el("p", "", accessToken
+      ? "No Google Calendars found yet. Click Refresh to load them."
+      : "Sign in (click Refresh) to choose which Google Calendars to show."));
+    return panel;
+  }
+  panel.append(el("p", "sub", "Show events from these Google Calendars:"));
+  for (const c of calendars) {
+    const label = el("label", "cal-option");
+    const box = el("input");
+    box.type = "checkbox";
+    box.checked = shownCals.has(c.id);
+    box.onchange = () => toggleCalendar(c.id, box.checked);
+    const swatch = el("span", "swatch");
+    swatch.style.background = c.color;
+    label.append(box, swatch, el("span", "", c.name));
+    panel.append(label);
+  }
+  panel.append(el("p", "sub", "To add a subscription by link (.ics), add it in Google Calendar under Other calendars → + → From URL, then click Refresh here."));
+  return panel;
 }
 
 function shiftCal(delta) {
@@ -521,17 +781,28 @@ function loadDemo() {
 // ---------- Wire up ----------
 
 $("signInBtn").onclick = signIn;
-$("refreshBtn").onclick = load;
+$("refreshBtn").onclick = () => (accessToken ? load() : signIn());
+$("signOutBtn").onclick = signOut;
 $("demoBtn").onclick = loadDemo;
 $("listViewBtn").onclick = () => setView("list");
 $("calViewBtn").onclick = () => setView("calendar");
 try { if (localStorage.getItem("view") === "calendar") setView("calendar"); } catch {}
-["search", "courseFilter", "showDone"].forEach((id) => $(id).addEventListener("input", render));
-$("showMissing").addEventListener("input", () => {
-  try { localStorage.setItem("showMissing", $("showMissing").checked ? "1" : "0"); } catch {}
+$("search").addEventListener("input", render);
+PREFS.forEach((id) => $(id).addEventListener("input", () => { savePrefs(); render(); }));
+try { if (localStorage.getItem("showMissing") === "0") $("showMissing").checked = false; } catch {} // older setting
+
+// On page load: show saved data right away, and stay signed in if the token is still valid.
+const savedAt = restoreCache();
+restorePrefs();
+accessToken = restoreToken();
+if (savedAt) {
+  showSignedInButtons();
   render();
-});
-$("showRemoved").addEventListener("input", render);
-try { if (localStorage.getItem("showMissing") === "0") $("showMissing").checked = false; } catch {}
+  setStatus(`Showing saved data from ${fmtDate(savedAt)}. Click Refresh for the latest.`);
+}
+if (accessToken) {
+  showSignedInButtons();
+  load();
+}
 // Keep the "due in" countdowns and missing status fresh if the tab stays open.
 setInterval(() => items.length && render(), 60e3);

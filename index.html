@@ -96,6 +96,15 @@
       .cal-grid.week .cal-day { min-height: 0; }
       .cal-grid.week .chip { display: block; font-size: 13px; }
     }
+    .chip.ev { background: transparent; color: var(--text); border-left: 3px solid var(--ev); border-radius: 3px; }
+    .dot.ev { background: var(--ev); }
+    li.ev-item { border-left-color: var(--ev); }
+    .active-outline { border-color: var(--accent); color: var(--accent); }
+    .cal-panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+    .cal-panel p { margin: 0 0 8px; }
+    .cal-panel p.sub:last-child { margin: 8px 0 0; }
+    .cal-option { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
+    .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
     .hidden { display: none !important; }
     code { background: var(--later-bg); padding: 1px 5px; border-radius: 4px; }
   </style>
@@ -111,6 +120,7 @@
       <button id="demoBtn">Try demo</button>
       <button id="signInBtn" class="primary">Sign in with Google</button>
       <button id="refreshBtn" class="hidden">Refresh</button>
+      <button id="signOutBtn" class="hidden" title="Sign out and clear saved data from this browser">Sign out</button>
     </div>
   </header>
 
