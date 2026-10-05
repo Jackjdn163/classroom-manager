@@ -398,6 +398,7 @@ function render() {
   $("sWeek").textContent = open.filter((i) => i.tier === "urgent" || i.tier === "soon").length;
   $("sOpen").textContent = open.length;
 
+  renderPlanBar(now);
   $("lists").classList.toggle("hidden", view !== "list");
   $("calendar").classList.toggle("hidden", view !== "calendar");
   if (view === "calendar") renderCalendar(visible, now);
@@ -440,6 +441,7 @@ function renderCalendar(visible, now) {
     byDay.get(k).push(i);
   }
   const evByDay = eventsByDay();
+  const planByDay = planBlocksByDay();
 
   const cal = $("calendar");
   cal.innerHTML = "";
@@ -489,6 +491,7 @@ function renderCalendar(visible, now) {
     const k = dayKey(day);
     const due = (byDay.get(k) || []).sort(compare);
     const evs = evByDay.get(k) || [];
+    const study = planByDay.get(k) || [];
 
     const cell = el("div", "cal-day");
     cell.tabIndex = 0;
@@ -506,6 +509,12 @@ function renderCalendar(visible, now) {
         const a = el("a", `chip t-${i.tier}${i.removed ? " removed" : ""}`, week ? `${fmtTime(i.due)} · ${i.title}` : i.title);
         a.href = i.link;
         a.title = `${i.title} · ${i.course}`;
+        return a;
+      }),
+      ...study.map((b) => {
+        const a = el("a", `chip plan${b.soft ? " soft" : ""}`, week ? `${blockLabel(b)} · 📖 ${b.item.title}` : `📖 ${b.item.title}`);
+        a.href = b.item.link;
+        a.title = `Study: ${b.item.title} · ${blockLabel(b)}`;
         return a;
       }),
       ...evs.map((e) => {
@@ -526,6 +535,7 @@ function renderCalendar(visible, now) {
     if (chips.length) {
       const dots = el("div", "dots");
       due.forEach((i) => dots.append(el("span", `dot t-${i.tier}`)));
+      study.forEach(() => dots.append(el("span", "dot plan")));
       evs.forEach((e) => {
         const d = el("span", "dot ev");
         d.style.setProperty("--ev", calColor(e.calId));
@@ -555,6 +565,13 @@ function renderCalendar(visible, now) {
     detail.append(ol);
   } else {
     detail.append(el("div", "notice", "Nothing due this day."));
+  }
+  const dayStudy = planByDay.get(selKey) || [];
+  if (dayStudy.length) {
+    detail.append(el("h2", "", `Study plan (${dayStudy.length})`));
+    const ol = el("ol");
+    dayStudy.forEach((b) => ol.append(renderPlanRow(b, now)));
+    detail.append(ol);
   }
   if (dayEvents.length) {
     detail.append(el("h2", "", `Events (${dayEvents.length})`));
@@ -695,6 +712,7 @@ function renderItem(item, rank, now) {
   badge.textContent = badgeText(item, now);
 
   body.append(a, document.createElement("br"), meta);
+  if (!item.done) body.append(estimatePicker(item));
   const right = document.createElement("div");
   right.style.cssText = "display:flex; flex-direction:column; align-items:flex-end; gap:6px;";
   const openLink = a.cloneNode(false);
@@ -713,6 +731,25 @@ function renderItem(item, rank, now) {
 
   li.append(r, body, right);
   return li;
+}
+
+// "⏱ 45 min" dropdown; changing it is remembered and used by the planner.
+function estimatePicker(item) {
+  const wrap = el("label", "est");
+  wrap.title = "How long you think this will take. Used by Make my plan.";
+  const sel = el("select");
+  const current = estimateOf(item);
+  [...new Set([...ESTIMATE_CHOICES, current])].sort((a, b) => a - b)
+    .forEach((m) => sel.add(new Option(fmtMinutes(m), m)));
+  sel.value = current;
+  sel.onchange = () => {
+    estimates[item.id] = Number(sel.value);
+    saveEstimates();
+    render();
+  };
+  wrap.append("⏱ ", sel);
+  if (!(item.id in estimates)) wrap.append(el("span", "guess", " (guess)"));
+  return wrap;
 }
 
 function badgeText(item, now) {

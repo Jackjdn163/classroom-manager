@@ -59,3 +59,14 @@ The app saves your last-loaded assignments, calendar events and filter settings 
 In Calendar view, click **Calendars ▾** and check the Google Calendars to show next to your assignments. This includes calendars you subscribe to. To add a calendar by link (.ics), add it in Google Calendar under *Other calendars → + → From URL*, then click **Refresh**.
 
 This needs the **Google Calendar API** turned on in your Google Cloud project (*APIs & Services → Library → Google Calendar API → Enable*).
+
+## Study plan
+
+Click **Make my plan** to fit your unfinished assignments into free time:
+- **Weekdays:** after school (4:30 PM) until an 11 PM bedtime. It only goes up to 30 minutes past bedtime when that's the only way to finish something on time, and those blocks are shown in orange.
+- **Weekends:** 7 AM–11 PM, at most 3 hours of work per day.
+- **Calendar events:** timed events on the calendars you've turned on are avoided. All-day events don't block time.
+- **Order:** work due in the next 2 days comes first, then missing work (oldest first), then everything else by due date.
+- **Long assignments:** split into blocks of up to 1 hour, with 10-minute breaks between.
+
+Each assignment shows a **⏱ time estimate**. It starts as a guess from the type and points; change it and the app remembers it. To change school hours, bedtime or limits, edit `PLAN` at the top of `planner.js`.

@@ -105,6 +105,21 @@
     .cal-panel p.sub:last-child { margin: 8px 0 0; }
     .cal-option { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
     .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+    .plan-bar { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 20px; }
+    .plan-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .plan-bar h2 { margin: 14px 0 8px; }
+    .plan-bar > p { margin: 10px 0 0; }
+    .plan-note { color: var(--urgent); font-size: 14px; }
+    .plan-warn { color: var(--missing); font-size: 14px; }
+    li.plan-item { border-left: 4px dashed var(--accent); }
+    li.plan-item.soft { border-left-color: var(--urgent); }
+    li.plan-item.past { opacity: .55; }
+    .chip.plan { background: transparent; color: var(--accent); border: 1px dashed var(--accent); }
+    .chip.plan.soft { color: var(--urgent); border-color: var(--urgent); }
+    .dot.plan { background: transparent; border: 1.5px solid var(--accent); }
+    .est { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .est select { font: inherit; font-size: 13px; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+    .est .guess { font-style: italic; }
     .hidden { display: none !important; }
     code { background: var(--later-bg); padding: 1px 5px; border-radius: 4px; }
   </style>
@@ -127,6 +142,7 @@
   <div id="message" class="notice hidden"></div>
 
   <section id="app" class="hidden">
+    <div id="planBar" class="plan-bar"></div>
     <div class="stats">
       <div class="stat missing"><b id="sMissing">0</b><span>Missing</span></div>
       <div class="stat urgent"><b id="sUrgent">0</b><span>Due in next 48 hrs</span></div>
@@ -151,6 +167,7 @@
 
 <script src="config.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="planner.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
