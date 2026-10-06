@@ -72,7 +72,10 @@ This needs the **Google Calendar API** turned on in your Google Cloud project (*
 Click **Make my plan** to fit your unfinished assignments into your free study time:
 - **⚙ Study hours:** school days and times, no-school days (holidays), time to start studying on days off, bedtime, how far past bedtime is allowed when needed, the most work on days off, block length and breaks.
 - **Calendar events:** timed events on the calendars you've turned on are avoided. All-day events don't block time.
-- **Order:** work due in the next 2 days first, then missing work (oldest first), then the rest by due date, adjusted by priority.
+- **This week:** plans today and the next 6 days. Work due after that gets a fair share of this week's time; the rest is planned in later weeks.
+- **Spread out:** each assignment is split into sessions (about 30 min or more) on different days, always on the least-busy day available, so nothing gets crammed into one day.
+- **Before the due date:** sessions only go on days before the day something is due, never on or after it. Something due today can't be planned, so it's flagged instead. Missing work is spread over the week.
+- **Order:** assignments with the fewest days left are planned first; High priority counts as due a day earlier, Low a day later.
 - **Adjust it:** click **Edit** on a session to move, resize or delete it, or **+ Study session** to add your own. Check off sessions you finish. Edited and finished sessions are kept when you click **Update my plan**, and their time comes off what's left to plan.
 - **Today / This week:** today's sessions and what's due, or a 7-day overview with study time per day and per class. Click a day to open it in the calendar.
 - **Sync to Google Calendar:** copies upcoming sessions into a **Study Plan** calendar the app creates, with a reminder 10 minutes before each. Sync again after updating the plan. The app can only change calendars it created.

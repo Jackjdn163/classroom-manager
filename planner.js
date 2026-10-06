@@ -15,7 +15,6 @@ const PLAN_DEFAULTS = {
   minBlockMin: 15,
   breakMin: 10,                // gap after each block
   daysOff: [],                 // "YYYY-MM-DD" dates with no school
-  maxHorizonDays: 60,
 };
 let PLAN = { ...PLAN_DEFAULTS, ...loadJSON("planSettings", {}) };
 function savePlanSettings() { saveJSON("planSettings", PLAN); }
@@ -91,42 +90,57 @@ function keptBlocks(now) {
   return plan.blocks.filter((b) => b.done || (b.locked && b.end > now && open.has(b.itemId)));
 }
 
+const PLAN_DAYS = 7; // today + the next 6 days
+
 function makePlan() {
   items.forEach((i) => (i.tier = tierOf(i)));
   const now = new Date(Math.ceil(Date.now() / (5 * 60e3)) * 5 * 60e3); // next 5-minute mark
+  const today = startOfDay(now);
+  const weekEnd = addDays(today, PLAN_DAYS);
   const kept = keptBlocks(now);
 
-  // Time already done or booked by your own blocks comes off each estimate.
+  // Time already done or booked by your own sessions comes off each estimate.
   const booked = new Map();
   for (const b of kept) booked.set(b.itemId, (booked.get(b.itemId) || 0) + blockMinutes(b));
+
   const allTasks = planTasks();
-  const tasks = allTasks
-    .map((t) => ({ ...t, minutes: Math.max(0, t.minutes - (booked.get(t.item.id) || 0)) }))
-    .filter((t) => t.minutes > 0);
-
-  const latestDue = Math.max(0, ...tasks.filter((t) => t.item.tier !== "missing").map((t) => +t.item.due));
-  const days = Math.min(PLAN.maxHorizonDays, Math.max(14, Math.ceil((latestDue - now) / DAY) + 1));
-  const horizon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
-
-  const effDue = (t) => +t.item.due + PRIORITY_SHIFT[t.item.priority || "normal"];
-  const prio = (t) => PRIORITY[t.item.priority || "normal"].rank;
-  const missing = tasks.filter((t) => t.item.tier === "missing").sort((a, b) => (prio(a) - prio(b)) || (a.item.due - b.item.due));
-  const upcoming = tasks.filter((t) => t.item.tier !== "missing").sort((a, b) => (effDue(a) - effDue(b)) || (b.item.points - a.item.points));
-  const soon = upcoming.filter((t) => t.item.due - now < 2 * DAY);
-  const later = upcoming.filter((t) => t.item.due - now >= 2 * DAY);
-
-  const busyKept = kept.filter((b) => b.end > now).map((b) => [+b.start, +b.end]);
-  // First try: anything due in the next 2 days, then missing work, then the rest.
-  // If that makes on-time work not fit, plan all on-time work first instead.
-  let result = schedule([...soon, ...missing, ...later], now, horizon, busyKept);
-  const lateUpcoming = (r) => r.unfit.filter((u) => u.tier !== "missing").length;
-  if (missing.length && lateUpcoming(result)) {
-    const alt = schedule([...upcoming, ...missing], now, horizon, busyKept);
-    if (lateUpcoming(alt) < lateUpcoming(result)) result = alt;
+  const tasks = [], unfit = [], later = [];
+  for (const t of allTasks) {
+    let minutes = Math.max(0, t.minutes - (booked.get(t.item.id) || 0));
+    if (!minutes) continue;
+    const isMissing = t.item.tier === "missing";
+    const dueDay = isMissing ? null : startOfDay(t.item.due);
+    // Work only on days before the due date (and only this week).
+    const stop = isMissing || dueDay > weekEnd ? weekEnd : dueDay;
+    const days = [];
+    for (let d = today; d < stop; d = addDays(d, 1)) days.push(dayKey(d));
+    if (!days.length) {
+      unfit.push({ itemId: t.item.id, needMin: minutes, tier: t.item.tier, reason: "dueToday" });
+      continue;
+    }
+    // Due after this week: plan this week's fair share, leave the rest for later.
+    if (!isMissing && dueDay > weekEnd) {
+      const daysBeforeDue = Math.round((dueDay - today) / DAY);
+      const share = Math.min(minutes, Math.ceil((minutes * PLAN_DAYS) / daysBeforeDue / 5) * 5);
+      if (share < minutes) later.push({ itemId: t.item.id, min: minutes - share });
+      minutes = share;
+    }
+    tasks.push({ item: t.item, minutes, days, deadline: isMissing ? weekEnd : stop });
   }
 
-  plan = { at: Date.now(), sig: planSignature(allTasks), blocks: numberParts([...kept, ...result.blocks]), unfit: result.unfit };
+  const result = schedule(tasks, now, weekEnd, kept.filter((b) => b.end > now));
+  plan = {
+    at: Date.now(),
+    sig: planSignature(allTasks),
+    blocks: numberParts([...kept, ...result.blocks]),
+    unfit: [...unfit, ...result.unfit],
+    later,
+  };
   savePlan();
+}
+
+function addDays(d, n) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 }
 
 function numberParts(blocks) {
@@ -140,42 +154,85 @@ function numberParts(blocks) {
   return blocks;
 }
 
-function schedule(tasks, now, horizon, extraBusy) {
-  const slots = freeSlots(now, horizon, extraBusy);
-  const usedByDay = new Map();
-  for (const [a, b] of extraBusy) {
-    const k = dayKey(new Date(a));
-    usedByDay.set(k, (usedByDay.get(k) || 0) + (b - a) / 60e3);
+// Splits each assignment into sessions and spreads them over the days before it's due,
+// always choosing the least-busy day (and avoiding two sessions of the same
+// assignment on one day when possible).
+function schedule(tasks, now, weekEnd, keptFuture) {
+  const slots = freeSlots(now, weekEnd, keptFuture.map((b) => [+b.start, +b.end]));
+  const slotsByDay = new Map();
+  for (const s of slots) {
+    if (!slotsByDay.has(s.day)) slotsByDay.set(s.day, []);
+    slotsByDay.get(s.day).push(s);
+  }
+  const load = new Map();      // day -> planned minutes
+  const sameTask = new Set();  // "itemId|day" already has a session
+  for (const b of keptFuture) {
+    const k = dayKey(b.start);
+    load.set(k, (load.get(k) || 0) + blockMinutes(b));
+    sameTask.add(b.itemId + "|" + k);
   }
   const blocks = [], unfit = [];
 
+  // Most constrained first (fewest days left), then earliest (priority-adjusted) due date.
+  const effDue = (t) => +t.deadline + PRIORITY_SHIFT[t.item.priority || "normal"];
+  tasks.sort((a, b) => (a.days.length - b.days.length) || (effDue(a) - effDue(b)));
+
   for (const t of tasks) {
-    const isMissing = t.item.tier === "missing";
-    const deadline = isMissing ? horizon : t.item.due;
-    let left = t.minutes;
-    // Normal hours first; only then go past bedtime (never for missing work).
-    for (const soft of isMissing || !PLAN.softLimitMin ? [false] : [false, true]) {
-      for (const s of slots) {
-        if (s.soft !== soft) continue;
-        // Keep filling this stretch of free time (in blocks with breaks) before moving on.
-        while (left > 0 && s.start < deadline) {
-          const used = usedByDay.get(s.day) || 0;
-          const avail = Math.floor(Math.min((Math.min(+s.end, +deadline) - s.start) / 60e3, s.cap - used));
-          if (avail < Math.min(PLAN.minBlockMin, left)) break;
-          const len = Math.min(left, PLAN.maxBlockMin, avail);
-          const start = new Date(s.start);
-          const end = new Date(+start + len * 60e3);
-          blocks.push({ id: blockId(), itemId: t.item.id, start, end, soft });
-          s.start = new Date(+end + PLAN.breakMin * 60e3);
-          usedByDay.set(s.day, used + len);
-          left -= len;
-        }
-        if (left <= 0) break;
-      }
+    const sessions = Math.max(1, Math.min(t.days.length,
+      Math.max(Math.ceil(t.minutes / PLAN.maxBlockMin), Math.floor(t.minutes / 30))));
+    const queue = splitEven(t.minutes, sessions);
+    const canGoLate = t.item.tier !== "missing" && PLAN.softLimitMin > 0;
+    let left = 0;
+    while (queue.length) {
+      const want = queue.shift();
+      // Whole session in normal hours, then past bedtime, then a shorter piece of either.
+      const got = place(t, want, false, false)
+        || (canGoLate && place(t, want, true, false))
+        || place(t, want, false, true)
+        || (canGoLate && place(t, want, true, true));
+      if (!got) { left += want + queue.reduce((a, b) => a + b, 0); break; }
+      if (got < want) queue.unshift(want - got);
     }
     if (left > 0) unfit.push({ itemId: t.item.id, needMin: left, tier: t.item.tier });
   }
   return { blocks, unfit };
+
+  // Puts up to `want` minutes of t on the best day; returns minutes placed (0 if none).
+  function place(t, want, soft, partial) {
+    const order = t.days
+      .map((k, n) => ({ k, n, score: (load.get(k) || 0) + (sameTask.has(t.item.id + "|" + k) ? 10000 : 0) }))
+      .sort((a, b) => (a.score - b.score) || (a.n - b.n));
+    const need = partial ? Math.min(PLAN.minBlockMin, want) : want;
+    for (const { k } of order) {
+      for (const s of slotsByDay.get(k) || []) {
+        if (s.soft !== soft) continue;
+        const used = load.get(k) || 0;
+        const fits = Math.floor(Math.min((Math.min(+s.end, +t.deadline) - s.start) / 60e3, s.cap - used));
+        if (fits < need) continue;
+        const len = Math.min(want, fits);
+        const start = new Date(s.start);
+        const end = new Date(+start + len * 60e3);
+        blocks.push({ id: blockId(), itemId: t.item.id, start, end, soft });
+        s.start = new Date(+end + PLAN.breakMin * 60e3);
+        load.set(k, used + len);
+        sameTask.add(t.item.id + "|" + k);
+        return len;
+      }
+    }
+    return 0;
+  }
+}
+
+// Splits total minutes into n parts in 5-minute steps, as equal as possible.
+function splitEven(total, n) {
+  const parts = Array(n).fill(Math.floor(total / n / 5) * 5);
+  let rest = total - parts.reduce((a, b) => a + b, 0);
+  for (let i = 0; rest > 0; i = (i + 1) % n) {
+    const add = Math.min(5, rest);
+    parts[i] += add;
+    rest -= add;
+  }
+  return parts.filter((p) => p > 0);
 }
 
 function isSchoolDay(day) {
@@ -456,7 +513,7 @@ function renderPlanBar(now) {
   bar.append(top);
 
   if (!plan) {
-    bar.append(el("p", "sub", `Plans your work around school, your calendar events and bedtime. ${settingsSummary()}.`));
+    bar.append(el("p", "sub", `Plans today and the next 6 days, spreading work out and finishing each assignment before the day it's due. ${settingsSummary()}.`));
     return;
   }
 
@@ -474,10 +531,17 @@ function renderPlanBar(now) {
   for (const u of plan.unfit) {
     const i = byId.get(u.itemId);
     if (!i || i.done || i.removed) continue;
-    const why = u.tier === "missing"
-      ? `couldn't find ${fmtMinutes(u.needMin)} of free time in the next few weeks`
-      : `needs ${fmtMinutes(u.needMin)} more than you have free before it's due`;
+    const why = u.reason === "dueToday"
+      ? "is due today, so there's no day left before its due date to plan it. Do it as soon as you can"
+      : u.tier === "missing"
+        ? `couldn't fit ${fmtMinutes(u.needMin)} of it into this week's free time`
+        : `needs ${fmtMinutes(u.needMin)} more than you have free on the days before it's due`;
     bar.append(el("p", "plan-warn", `⚠️ ${i.title} (${i.course}) ${why}.`));
+  }
+  const later = (plan.later || []).filter((l) => { const i = byId.get(l.itemId); return i && !i.done && !i.removed; });
+  if (later.length) {
+    bar.append(el("p", "sub", "Due after this week, so only part is planned now: "
+      + later.map((l) => `${byId.get(l.itemId).title} (${fmtMinutes(l.min)} left for later)`).join(", ") + "."));
   }
 
   const tabs = el("div", "seg plan-tabs");
