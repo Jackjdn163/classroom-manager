@@ -22,6 +22,11 @@ const TIERS = {
 const $ = (id) => document.getElementById(id);
 let accessToken = null;
 let tokenClient = null;
+let tokenScopes = new Set(); // permissions the current sign-in has
+let afterSignIn = null;      // what to do after signing in (default: load everything)
+// sourceItems: from Classroom (or demo). items: sourceItems + your own assignments,
+// rebuilt on every render.
+let sourceItems = [];
 let items = [];
 let view = "list";
 // Assignments the user removed, remembered in this browser. (Stored under "hidden"
@@ -40,7 +45,9 @@ let calMode = (() => { try { return localStorage.getItem("calMode") === "week" ?
 
 // ---------- Google sign-in ----------
 
-function signIn() {
+// extraScopes: more permissions to ask for (Google Tasks, writing to Calendar).
+// after: run this instead of reloading once signed in.
+function signIn(extraScopes = [], after = null) {
   const clientId = window.CLASSROOM_CONFIG?.CLIENT_ID;
   if (!clientId || clientId.startsWith("PASTE_")) {
     return showMessage("No Client ID yet. Open <code>config.js</code> and paste your Google OAuth Client ID (see README.md), then reload this page.", true);
@@ -54,12 +61,17 @@ function signIn() {
     callback: (resp) => {
       if (resp.error) return showMessage("Sign-in failed: " + resp.error, true);
       accessToken = resp.access_token;
-      saveToken(resp.access_token, resp.expires_in);
+      tokenScopes = new Set((resp.scope || "").split(" "));
+      saveToken(resp.access_token, resp.expires_in, [...tokenScopes]);
       showSignedInButtons();
-      load();
+      const next = afterSignIn;
+      afterSignIn = null;
+      if (next) next();
+      else load();
     },
   });
-  tokenClient.requestAccessToken();
+  afterSignIn = after;
+  tokenClient.requestAccessToken({ scope: [SCOPES, ...extraScopes].join(" ") });
 }
 
 function showSignedInButtons() {
@@ -80,13 +92,16 @@ function signOut() {
 
 // Google access tokens last ~1 hour. Keeping it in sessionStorage means a page refresh
 // stays signed in, but closing the tab signs you out.
-function saveToken(token, expiresIn) {
-  try { sessionStorage.setItem("token", JSON.stringify({ token, exp: Date.now() + (expiresIn - 60) * 1000 })); } catch {}
+function saveToken(token, expiresIn, scopes) {
+  try { sessionStorage.setItem("token", JSON.stringify({ token, scopes, exp: Date.now() + (expiresIn - 60) * 1000 })); } catch {}
 }
 function restoreToken() {
   try {
     const t = JSON.parse(sessionStorage.getItem("token"));
-    if (t && t.exp > Date.now()) return t.token;
+    if (t && t.exp > Date.now()) {
+      tokenScopes = new Set(t.scopes || []);
+      return t.token;
+    }
   } catch {}
   return null;
 }
@@ -142,8 +157,7 @@ async function load() {
       }
     }));
 
-    items = perCourse.flat();
-    fillCourseFilter(courses.map((c) => c.name));
+    setSource(perCourse.flat());
 
     let calError = null;
     try {
@@ -154,7 +168,7 @@ async function load() {
 
     render();
     saveCache();
-    setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${courses.length} classes · ${items.length} assignments`);
+    setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${courses.length} classes · ${sourceItems.length} assignments`);
     const problems = [];
     if (skipped.length) problems.push("Couldn't read assignments from: " + skipped.join(", "));
     if (calError) problems.push(calendarErrorText(calError));
@@ -191,6 +205,7 @@ async function calListAll(path, params = {}) {
 async function loadCalendars() {
   const list = await calListAll("users/me/calendarList");
   calendars = list
+    .filter((c) => c.id !== studyCalendarId()) // the app's own Study Plan calendar is shown as study blocks already
     .map((c) => ({ id: c.id, name: c.summaryOverride || c.summary, color: c.backgroundColor || "#888", primary: !!c.primary }))
     .sort((a, b) => (b.primary - a.primary) || a.name.localeCompare(b.name));
   const ids = calendars.filter((c) => shownCals.has(c.id)).map((c) => c.id);
@@ -283,7 +298,7 @@ function eventTime(e) {
 
 function saveCache() {
   try {
-    localStorage.setItem("cache", JSON.stringify({ at: Date.now(), items, calendars, events }));
+    localStorage.setItem("cache", JSON.stringify({ at: Date.now(), items: sourceItems, calendars, events }));
   } catch {}
 }
 
@@ -291,10 +306,9 @@ function restoreCache() {
   try {
     const c = JSON.parse(localStorage.getItem("cache"));
     if (!c) return null;
-    items = c.items.map((i) => ({ ...i, due: i.due ? new Date(i.due) : null }));
+    setSource(c.items.map((i) => ({ ...i, due: i.due ? new Date(i.due) : null })));
     calendars = c.calendars || [];
     events = (c.events || []).map((e) => ({ ...e, start: new Date(e.start), end: new Date(e.end) }));
-    fillCourseFilter(items.map((i) => i.course));
     return new Date(c.at);
   } catch {
     return null;
@@ -337,11 +351,17 @@ function toItem(course, w, sub) {
     points: w.maxPoints || 0,
     type: w.workType,
     done,
+    turnedIn: done,
     state,
     grade: sub?.assignedGrade,
     // Prefer the submission link (opens your own work page); fall back to the assignment.
     link: sub?.alternateLink || w.alternateLink || course.alternateLink,
   };
+}
+
+function setSource(list) {
+  list.forEach((i) => (i.turnedIn ??= i.done)); // older saved data has only "done"
+  sourceItems = list;
 }
 
 // ---------- Prioritizing ----------
@@ -359,11 +379,14 @@ function tierOf(item, now = Date.now()) {
 function compare(a, b) {
   const ta = TIERS[a.tier].order, tb = TIERS[b.tier].order;
   if (ta !== tb) return ta - tb;
+  if (a.tier === "done") return (b.due || 0) - (a.due || 0);
+  // Your priority comes first within each group.
+  const pa = PRIORITY[a.priority || "normal"].rank, pb = PRIORITY[b.priority || "normal"].rank;
+  if (pa !== pb) return pa - pb;
   if (a.tier === "missing") {
     // Most overdue first, then biggest point value.
     return (a.due - b.due) || (b.points - a.points);
   }
-  if (a.tier === "done") return (b.due || 0) - (a.due || 0);
   if (a.due && b.due && a.due - b.due !== 0) return a.due - b.due;
   return b.points - a.points;
 }
@@ -372,7 +395,14 @@ function compare(a, b) {
 
 function render() {
   const now = Date.now();
-  items.forEach((i) => (i.tier = tierOf(i, now)));
+  items = [...sourceItems, ...manualAsItems()];
+  for (const i of items) {
+    i.markedDone = !i.turnedIn && completed.has(i.id);
+    i.done = i.turnedIn || i.markedDone;
+    i.priority = priorityOf(i);
+    i.tier = tierOf(i, now);
+  }
+  fillCourseFilter(items.map((i) => i.course));
 
   const q = $("search").value.trim().toLowerCase();
   const course = $("courseFilter").value;
@@ -507,13 +537,13 @@ function renderCalendar(visible, now) {
     const chips = [
       ...due.map((i) => {
         const a = el("a", `chip t-${i.tier}${i.removed ? " removed" : ""}`, week ? `${fmtTime(i.due)} · ${i.title}` : i.title);
-        a.href = i.link;
+        if (i.link) a.href = i.link;
         a.title = `${i.title} · ${i.course}`;
         return a;
       }),
       ...study.map((b) => {
         const a = el("a", `chip plan${b.soft ? " soft" : ""}`, week ? `${blockLabel(b)} · 📖 ${b.item.title}` : `📖 ${b.item.title}`);
-        a.href = b.item.link;
+        if (b.item.link) a.href = b.item.link;
         a.title = `Study: ${b.item.title} · ${blockLabel(b)}`;
         return a;
       }),
@@ -526,9 +556,12 @@ function renderCalendar(visible, now) {
       }),
     ];
     (week ? chips : chips.slice(0, 3)).forEach((a) => {
-      a.target = "_blank";
-      a.rel = "noopener";
-      a.onclick = (e) => e.stopPropagation();
+      // Items without a link (your own assignments) just select the day.
+      if (a.getAttribute("href")) {
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.onclick = (e) => e.stopPropagation();
+      }
       cell.append(a);
     });
     if (!week && chips.length > 3) cell.append(el("span", "more", `+${chips.length - 3} more`));
@@ -661,7 +694,11 @@ function setView(v) {
   try { localStorage.setItem("view", v); } catch {}
   $("listViewBtn").classList.toggle("active", v === "list");
   $("calViewBtn").classList.toggle("active", v === "calendar");
-  if (items.length) render();
+  if (hasData()) render();
+}
+
+function hasData() {
+  return sourceItems.length > 0 || manualItems.length > 0;
 }
 
 function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
@@ -692,19 +729,21 @@ function renderItem(item, rank, now) {
 
   const body = document.createElement("div");
   body.className = "body";
-  const a = document.createElement("a");
-  a.className = "title";
-  a.href = item.link;
-  a.target = "_blank";
-  a.rel = "noopener";
-  a.textContent = item.title;
+  const a = el(item.link ? "a" : "span", "title", item.title);
+  if (item.link) {
+    a.href = item.link;
+    a.target = "_blank";
+    a.rel = "noopener";
+  }
 
   const meta = document.createElement("div");
   meta.className = "meta";
   const parts = [item.course];
+  if (item.priority === "high") parts.unshift("🔴 High priority");
   if (item.due) parts.push("Due " + fmtDate(item.due));
   if (item.points) parts.push(`${item.points} pts`);
   if (item.tier === "done" && item.grade != null) parts.push(`Grade: ${item.grade}/${item.points}`);
+  if (item.fromTask) parts.push("from Google Tasks");
   meta.textContent = parts.join(" · ");
 
   const badge = document.createElement("span");
@@ -712,13 +751,31 @@ function renderItem(item, rank, now) {
   badge.textContent = badgeText(item, now);
 
   body.append(a, document.createElement("br"), meta);
-  if (!item.done) body.append(estimatePicker(item));
+  if (item.notes) body.append(el("div", "notes", item.notes));
+  if (!item.done) {
+    const pickers = el("div", "pickers");
+    pickers.append(estimatePicker(item), priorityPicker(item));
+    body.append(pickers);
+  }
   const right = document.createElement("div");
-  right.style.cssText = "display:flex; flex-direction:column; align-items:flex-end; gap:6px;";
-  const openLink = a.cloneNode(false);
-  openLink.className = "open";
-  openLink.textContent = "Open ↗";
-  right.append(badge, openLink);
+  right.className = "item-actions";
+  right.append(badge);
+  if (item.link) {
+    const openLink = a.cloneNode(false);
+    openLink.className = "open";
+    openLink.textContent = "Open ↗";
+    right.append(openLink);
+  }
+  if (!item.turnedIn) {
+    const doneBtn = el("button", "hide-btn done-btn", item.markedDone ? "Undo done" : "✓ Done");
+    doneBtn.title = item.manual ? "Mark this finished" : "Mark finished in this app (doesn't turn it in on Classroom)";
+    doneBtn.onclick = () => toggleCompleted(item);
+    right.append(doneBtn);
+  }
+  if (item.manual) {
+    right.append(button("Edit", () => openAssignmentForm(item)));
+    right.lastChild.className = "hide-btn";
+  }
   const toggle = el("button", "hide-btn", item.removed ? "Restore" : "Remove");
   toggle.title = item.removed ? "Put this back in your list" : "Remove from your list (turn on Show removed to see it again)";
   toggle.onclick = () => {
@@ -753,7 +810,7 @@ function estimatePicker(item) {
 }
 
 function badgeText(item, now) {
-  if (item.tier === "done") return item.state === "RETURNED" ? "Returned" : "Turned in";
+  if (item.tier === "done") return item.markedDone ? "Done" : item.state === "RETURNED" ? "Returned" : "Turned in";
   if (item.tier === "nodate") return "No due date";
   const diff = item.due - now;
   if (diff < 0) {
@@ -796,7 +853,7 @@ function loadDemo() {
     return x;
   };
   const link = "https://classroom.google.com/";
-  items = [
+  const demo = [
     { title: "Lab Report: Photosynthesis", course: "Biology", due: d(-3), points: 50, done: false, state: "CREATED", link },
     { title: "Chapter 4 Vocab Quiz", course: "Spanish II", due: d(-1), points: 20, done: false, state: "NEW", link },
     { title: "Essay Draft: The Great Gatsby", course: "English 11", due: d(1, 8, 0), points: 100, done: false, state: "CREATED", link },
@@ -809,18 +866,21 @@ function loadDemo() {
     { title: "Weekly Reflection", course: "US History", due: d(-2), points: 10, done: true, state: "TURNED_IN", link },
     { title: "Poetry Unit Packet", course: "English 11", due: d(-400), points: 40, done: false, state: "NEW", link },
   ];
-  items.forEach((i, n) => (i.id = "demo:" + n));
-  fillCourseFilter(items.map((i) => i.course));
+  demo.forEach((i, n) => (i.id = "demo:" + n));
+  setSource(demo);
   render();
   setStatus("Demo mode: sample data. Sign in to see your real assignments.");
 }
 
 // ---------- Wire up ----------
 
-$("signInBtn").onclick = signIn;
+$("signInBtn").onclick = () => signIn();
 $("refreshBtn").onclick = () => (accessToken ? load() : signIn());
 $("signOutBtn").onclick = signOut;
 $("demoBtn").onclick = loadDemo;
+$("addBtn").onclick = () => openAssignmentForm();
+$("notifyBtn").onclick = toggleNotifications;
+updateNotifyButton();
 $("listViewBtn").onclick = () => setView("list");
 $("calViewBtn").onclick = () => setView("calendar");
 try { if (localStorage.getItem("view") === "calendar") setView("calendar"); } catch {}
@@ -837,6 +897,7 @@ if (savedAt) {
   render();
   setStatus(`Showing saved data from ${fmtDate(savedAt)}. Click Refresh for the latest.`);
 }
+if (!savedAt && manualItems.length) render();
 if (accessToken) {
   showSignedInButtons();
   load();
@@ -845,4 +906,9 @@ if (accessToken) {
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
 // Keep the "due in" countdowns and missing status fresh if the tab stays open.
-setInterval(() => items.length && render(), 60e3);
+setInterval(() => {
+  if (!hasData()) return;
+  render();
+  checkReminders();
+}, 60e3);
+setTimeout(checkReminders, 3000);

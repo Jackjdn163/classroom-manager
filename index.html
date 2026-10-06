@@ -124,6 +124,55 @@
     .est { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; color: var(--muted); margin-top: 4px; }
     .est select { font: inherit; font-size: 13px; padding: 1px 4px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
     .est .guess { font-style: italic; }
+    .item-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .pickers { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+    .notes { font-size: 13px; color: var(--muted); margin-top: 2px; white-space: pre-wrap; }
+    span.title { font-weight: 600; }
+    .done-btn { color: var(--done); }
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: flex-start; justify-content: center;
+      padding: 40px 16px; overflow-y: auto; z-index: 10; }
+    .modal { background: var(--card); color: var(--text); border-radius: 12px; padding: 18px; width: 100%; max-width: 440px; box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+    .modal.wide { max-width: 600px; }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .modal-head h3 { margin: 0; font-size: 18px; }
+    .modal-head button { border: 0; font-size: 16px; }
+    .form { display: flex; flex-direction: column; gap: 10px; }
+    .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); flex: 1; min-width: 0; }
+    .field input, .field select, .field textarea { font: inherit; font-size: 15px; color: var(--text); background: var(--bg);
+      border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; width: 100%; }
+    .field-row { display: flex; gap: 10px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+    button.danger { color: var(--missing); border-color: var(--missing); margin-right: auto; }
+    .import-row { margin: 4px 0 0; }
+    .plan-top button { white-space: nowrap; }
+    .plan-tabs { margin-top: 12px; }
+    .block-check { width: 18px; height: 18px; margin-top: 2px; flex: none; accent-color: var(--done); }
+    li.plan-item.done { opacity: .6; }
+    li.plan-item.done .title { text-decoration: line-through; }
+    .week-table { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+    .week-row { display: grid; grid-template-columns: 110px 1fr 150px; grid-template-areas: "day bar mins" "due due due";
+      gap: 2px 10px; align-items: center; text-align: left; padding: 8px 10px; }
+    .week-day { grid-area: day; font-weight: 600; font-size: 14px; }
+    .week-bar-wrap { grid-area: bar; height: 8px; background: var(--later-bg); border-radius: 4px; overflow: hidden; }
+    .week-bar { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+    .week-mins { grid-area: mins; font-size: 13px; color: var(--muted); text-align: right; }
+    .week-due { grid-area: due; font-size: 12px; color: var(--muted); }
+    .week-due:empty { display: none; }
+    @media (max-width: 600px) { .week-row { grid-template-columns: 90px 1fr; grid-template-areas: "day mins" "bar bar" "due due"; } }
+    .day-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+    .day-pick { display: flex; align-items: center; gap: 4px; font-size: 14px; color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 4px 8px; }
+    .field .day-picks input { width: auto; }
+    .field-row.align-end { align-items: flex-end; }
+    .chips-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .off-chip { font-size: 13px; background: var(--later-bg); border-radius: 999px; padding: 2px 4px 2px 10px; }
+    .off-chip button { border: 0; padding: 0 6px; background: transparent; font-size: 12px; }
+    .header-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+    .task-list { display: flex; flex-direction: column; gap: 4px; max-height: 50vh; overflow-y: auto; }
+    .task-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+    .task-row input { margin-top: 3px; }
+    .task-info { display: flex; flex-direction: column; }
+    .task-title { font-weight: 600; color: var(--text); }
     .hidden { display: none !important; }
     code { background: var(--later-bg); padding: 1px 5px; border-radius: 4px; }
   </style>
@@ -135,7 +184,9 @@
       <h1>Classroom Priorities</h1>
       <div class="sub" id="status">Sign in with the Google account you use for Classroom.</div>
     </div>
-    <div style="display:flex; gap:8px;">
+    <div class="header-buttons">
+      <button id="addBtn">+ Add assignment</button>
+      <button id="notifyBtn">🔕 Reminders off</button>
       <button id="demoBtn">Try demo</button>
       <button id="signInBtn" class="primary">Sign in with Google</button>
       <button id="refreshBtn" class="hidden">Refresh</button>
@@ -171,7 +222,10 @@
 
 <script src="config.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="manual.js"></script>
 <script src="planner.js"></script>
+<script src="google.js"></script>
+<script src="notify.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

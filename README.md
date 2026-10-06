@@ -60,16 +60,32 @@ In Calendar view, click **Calendars ▾** and check the Google Calendars to show
 
 This needs the **Google Calendar API** turned on in your Google Cloud project (*APIs & Services → Library → Google Calendar API → Enable*).
 
+## Your own assignments
+
+- **+ Add assignment:** add anything that isn't in Classroom (name, class, due date and time, priority, time needed, notes). Click **Edit** on it to change or delete it.
+- **Import from Google Tasks:** in the Add assignment window. Choose which unfinished tasks to add. Each task list becomes the "class", and due dates are set to 11:59 PM.
+- **✓ Done:** marks any assignment finished in this app. For Classroom assignments this does **not** turn it in on Classroom.
+- **Priority (High / Normal / Low):** High is listed first within its group and planned about a day earlier; Low about a day later.
+
 ## Study plan
 
-Click **Make my plan** to fit your unfinished assignments into free time:
-- **Weekdays:** after school (4:30 PM) until an 11 PM bedtime. It only goes up to 30 minutes past bedtime when that's the only way to finish something on time, and those blocks are shown in orange.
-- **Weekends:** 7 AM–11 PM, at most 3 hours of work per day.
+Click **Make my plan** to fit your unfinished assignments into your free study time:
+- **⚙ Study hours:** school days and times, no-school days (holidays), time to start studying on days off, bedtime, how far past bedtime is allowed when needed, the most work on days off, block length and breaks.
 - **Calendar events:** timed events on the calendars you've turned on are avoided. All-day events don't block time.
-- **Order:** work due in the next 2 days comes first, then missing work (oldest first), then everything else by due date.
-- **Long assignments:** split into blocks of up to 1 hour, with 10-minute breaks between.
+- **Order:** work due in the next 2 days first, then missing work (oldest first), then the rest by due date, adjusted by priority.
+- **Adjust it:** click **Edit** on a session to move, resize or delete it, or **+ Study session** to add your own. Check off sessions you finish. Edited and finished sessions are kept when you click **Update my plan**, and their time comes off what's left to plan.
+- **Today / This week:** today's sessions and what's due, or a 7-day overview with study time per day and per class. Click a day to open it in the calendar.
+- **Sync to Google Calendar:** copies upcoming sessions into a **Study Plan** calendar the app creates, with a reminder 10 minutes before each. Sync again after updating the plan. The app can only change calendars it created.
 
-Each assignment shows a **⏱ time estimate**. It starts as a guess from the type and points; change it and the app remembers it. To change school hours, bedtime or limits, edit `PLAN` at the top of `planner.js`.
+## Reminders
+
+Click **🔕 Reminders off** to turn on notifications 5 minutes before study sessions and 24 hours and 1 hour before things are due. They only appear while the app is open. For reminders on your phone or when the app is closed, use **Sync to Google Calendar**.
+
+Each assignment shows a **⏱ time estimate** (a guess from its type and points until you change it).
+
+## Google APIs to enable
+
+In Google Cloud → *APIs & Services → Library*, enable: **Google Classroom API**, **Google Calendar API**, and **Google Tasks API** (only needed for importing tasks).
 
 ## Install as a Mac app
 
