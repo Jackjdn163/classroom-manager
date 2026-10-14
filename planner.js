@@ -477,7 +477,7 @@ function openPlanSettings() {
   // Class colors
   const colorInputs = [];
   const colors = el("div", "color-grid");
-  for (const c of [...new Set(items.map((i) => i.course))].sort()) {
+  for (const c of [...new Set([...items.map((i) => i.course), ...scheduleClassNames()])].sort()) {
     const input = inputEl("color", classColor(c));
     colorInputs.push([c, input]);
     const label = el("label", "color-pick");

@@ -220,8 +220,16 @@ function openBusyTimes() {
 
 const classColors = loadJSON("classColors", {});
 const PALETTE = ["#3b82f6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6", "#84cc16", "#f97316"];
+// Classes without a chosen color get the next palette color, in alphabetical order,
+// so different classes look different.
+let paletteIndex = new Map();
+function refreshClassColors() {
+  const names = [...new Set([...items.map((i) => i.course), ...scheduleClassNames()])].sort();
+  paletteIndex = new Map(names.map((n, i) => [n, i]));
+}
 function classColor(course) {
   if (classColors[course]) return classColors[course];
+  if (paletteIndex.has(course)) return PALETTE[paletteIndex.get(course) % PALETTE.length];
   let h = 0;
   for (const c of String(course)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return PALETTE[h % PALETTE.length];

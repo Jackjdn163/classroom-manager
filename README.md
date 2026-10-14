@@ -69,6 +69,18 @@ This needs the **Google Calendar API** turned on in your Google Cloud project (*
 - **Priority (Urgent / High / Normal / Low):** listed first within its group and planned earlier (Urgent ≈ 2 days, High ≈ 1 day earlier; Low ≈ 1 day later).
 - **Checklist (☑ steps):** on any assignment. Use **Suggest steps** for a starting list based on the type. The next unchecked step shows on study sessions and in the Right now card.
 
+## Week view and class schedule
+
+In **Calendar → Week**, you get a big hour-by-hour grid for the week: your **classes** at their real times (with **A Day / B Day** badges), lunch and bus, **study sessions** (click one to edit it), calendar events, busy times and when things are **due**, plus a line for the current time. The page gets wider in this view. Month view stays as day boxes.
+
+Click **🏫 Class schedule** (in Week view) to set it up:
+- **Rotation:** A/B days (alternating each school day, skipping weekends and your no-school days) or the same classes every day. Tell it one day you know was an A or B Day.
+- **Class periods:** name, start, end, and the class for A Day and B Day.
+- **Lunch, breaks and bus:** shown as dashed blocks.
+- If your study hours don't match the schedule, it offers to start study time when your last block ends.
+
+It starts with your old HomeworkPlanner times (8:00–2:50 with lunch 11–12 and the bus until 3:30) and the B Day from your screenshot (Spanish, History, Math, Theatre; Tuesday Oct 13 = B Day). Fill in the A Day classes.
+
 ## Right now, focus timer and progress
 
 The **Right now** card shows whether you're on track, your study time over the last 7 days, your **streak** of days in a row with studying, and your top class. It suggests what to work on (the session happening now, the next one today, or your most urgent assignment).

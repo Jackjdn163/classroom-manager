@@ -404,6 +404,7 @@ function render() {
     i.tier = tierOf(i, now);
   }
   fillCourseFilter(items.map((i) => i.course));
+  refreshClassColors();
 
   const q = $("search").value.trim().toLowerCase();
   const course = $("courseFilter").value;
@@ -429,6 +430,7 @@ function render() {
   $("sWeek").textContent = open.filter((i) => i.tier === "urgent" || i.tier === "soon").length;
   $("sOpen").textContent = open.length;
 
+  document.body.classList.toggle("wide", view === "calendar" && calMode === "week");
   renderRightNow(now);
   renderPlanBar(now);
   $("lists").classList.toggle("hidden", view !== "list");
@@ -507,6 +509,7 @@ function renderCalendar(visible, now) {
   });
   if (calPanelOpen) calsBtn.classList.add("active-outline");
   nav.append(calsBtn);
+  if (week) nav.append(button("🏫 Class schedule", openScheduleEditor));
 
   // Week view shows the week containing the selected day; month view shows calMonth.
   const first = week
@@ -517,14 +520,15 @@ function renderCalendar(visible, now) {
 
   const panel = calPanelOpen ? renderCalPanel() : null;
 
-  const grid = el("div", week ? "cal-grid week" : "cal-grid");
-  for (let d = 0; d < 7; d++) {
+  const todayKey = dayKey(new Date(now));
+  const selKey = dayKey(selectedDay);
+  // Week: hour-by-hour grid with your classes. Month: day boxes.
+  const grid = week ? renderWeekGrid(first, { byDay, evByDay, planByDay, busyByDay, now }) : el("div", "cal-grid");
+  if (!week) for (let d = 0; d < 7; d++) {
     grid.append(el("div", "cal-dow", new Date(2023, 0, 1 + d).toLocaleString([], { weekday: "short" })));
   }
 
-  const todayKey = dayKey(new Date(now));
-  const selKey = dayKey(selectedDay);
-  for (let n = 0; n < totalDays; n++) {
+  for (let n = 0; !week && n < totalDays; n++) {
     const day = new Date(first.getFullYear(), first.getMonth(), first.getDate() + n);
     if (!week && n % 7 === 0 && n >= 28 && day.getMonth() !== calMonth.getMonth()) break; // drop empty trailing week
     const k = dayKey(day);
