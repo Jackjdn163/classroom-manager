@@ -115,6 +115,10 @@ In Google Cloud → *APIs & Services → Library*, enable: **Google Classroom AP
 
 Open https://classroommanager.site in **Google Chrome**, then click the install icon at the right end of the address bar (or ⋮ menu → *Cast, save and share → Install page as app…*). It gets its own window, Dock icon and Launchpad entry, and opens with your saved data even offline.
 
+## Profile menu
+
+Your Google profile picture (or initials) sits in the top-right corner. Click it for **Add assignment**, **Settings**, **Reminders**, **Refresh**, **Try demo**, **Sign in** and **Sign out**. In the plan, **More ▾** holds Busy times, Settings and Sync; in the calendar, **⋯** holds Calendars and Class schedule; **Filters** holds Show missing / completed / removed.
+
 ## Settings page
 
 Click **⚙ Settings** (top of the page, or in the plan) for one place with every setting: **Study hours**, **Class schedule**, **Busy times**, which **Google Calendars** to show, **Reminders**, **Google account & sync** (sign in/out, Sync to Google Calendar, import Google Tasks), **Class colors**, and **Backup & restore**. Use the menu on the left to jump to a section and **← Back** to return.

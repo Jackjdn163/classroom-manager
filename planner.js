@@ -532,8 +532,13 @@ function renderPlanBar(now) {
     render();
   });
   make.classList.add("primary");
-  top.append(make, button("+ Study session", () => openBlockEditor()), button(`Busy times${busyTimes.length ? ` (${busyTimes.length})` : ""}`, openBusyTimes), button("⚙ Settings", () => setView("settings")));
-  if (typeof calendarSyncButton === "function") top.append(calendarSyncButton());
+  // One main button; everything else is quieter or in the More menu.
+  const add = button("+ Study session", () => openBlockEditor());
+  top.append(make, add, dropdown("More ▾", [
+    [`Busy times${busyTimes.length ? ` (${busyTimes.length})` : ""}`, openBusyTimes],
+    ["⚙ Settings", () => setView("settings")],
+    typeof calendarSyncButton === "function" ? calendarSyncButton() : null,
+  ], { title: "More plan options" }));
   bar.append(top);
 
   if (!plan) {

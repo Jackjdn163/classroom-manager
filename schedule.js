@@ -194,7 +194,7 @@ function renderWeekGrid(first, { byDay, evByDay, planByDay, busyByDay, now }) {
     } else {
       const n = new Date(now);
       const inWeek = perDay.some((p) => p.k === todayKey);
-      scroller.scrollTop = inWeek ? Math.max(0, y(n.getHours() * 60 - 60)) : 0;
+      scroller.scrollTop = inWeek ? Math.max(0, y(n.getHours() * 60 - 60) - 14) : 0; // leave room for the hour label
     }
   });
   return scroller;

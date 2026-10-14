@@ -5,6 +5,8 @@ const SCOPES = [
   "https://www.googleapis.com/auth/classroom.courses.readonly",
   "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
   "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/userinfo.profile", // your name and picture for the profile button
+  "https://www.googleapis.com/auth/userinfo.email",
 ].join(" ");
 const API = "https://classroom.googleapis.com/v1/";
 const CAL_API = "https://www.googleapis.com/calendar/v3/";
@@ -75,6 +77,7 @@ function signIn(extraScopes = [], after = null) {
 }
 
 function showSignedInButtons() {
+  if (typeof updateWelcome === "function") updateWelcome();
   $("signInBtn").classList.add("hidden");
   $("demoBtn").classList.add("hidden");
   $("refreshBtn").classList.remove("hidden");
@@ -86,6 +89,7 @@ function signOut() {
   try {
     sessionStorage.removeItem("token");
     localStorage.removeItem("cache");
+    localStorage.removeItem("profile");
   } catch {}
   location.reload();
 }
@@ -159,6 +163,7 @@ async function load() {
 
     setSource(perCourse.flat());
 
+    loadProfile();
     let calError = null;
     try {
       await loadCalendars();
@@ -405,6 +410,7 @@ function render() {
   }
   fillCourseFilter(items.map((i) => i.course));
   refreshClassColors();
+  updateWelcome();
 
   const q = $("search").value.trim().toLowerCase();
   const course = $("courseFilter").value;
@@ -412,6 +418,8 @@ function render() {
   const showMissing = $("showMissing").checked;
   const showRemoved = $("showRemoved").checked;
 
+  const filtersOn = [!showMissing, showDone, showRemoved].filter(Boolean).length;
+  $("filterCount").textContent = filtersOn ? String(filtersOn) : "";
   items.forEach((i) => (i.removed = removed.has(i.id)));
   const removedCount = items.filter((i) => i.removed).length;
   $("removedCount").textContent = removedCount ? ` (${removedCount})` : "";
@@ -500,35 +508,37 @@ function renderCalendar(visible, now) {
   cal.innerHTML = "";
 
   const week = calMode === "week";
+  // Toolbar: date + ‹ Today › on the left; Month/Week and a ⋯ menu on the right.
   const head = el("div", "cal-head");
-  const nav = el("div");
-  nav.style.cssText = "display:flex; gap:6px; flex-wrap:wrap;";
   const unit = week ? "week" : "month";
+  const stepper = el("div", "seg stepper");
+  stepper.append(
+    button("‹", () => shiftCal(-1), `Previous ${unit}`),
+    button("Today", () => { calMonth = startOfMonth(new Date()); selectedDay = startOfDay(new Date()); render(); }),
+    button("›", () => shiftCal(1), `Next ${unit}`),
+  );
   const modes = el("div", "seg");
   modes.append(
     modeButton("Month", "month"),
     modeButton("Week", "week"),
   );
-  nav.append(
-    modes,
-    button("‹", () => shiftCal(-1), `Previous ${unit}`),
-    button("Today", () => { calMonth = startOfMonth(new Date()); selectedDay = startOfDay(new Date()); render(); }),
-    button("›", () => shiftCal(1), `Next ${unit}`),
-  );
-  const calsBtn = button(`Calendars${shownCals.size ? ` (${calendars.filter((c) => shownCals.has(c.id)).length})` : ""} ▾`, () => {
-    calPanelOpen = !calPanelOpen;
-    render();
-  });
-  if (calPanelOpen) calsBtn.classList.add("active-outline");
-  nav.append(calsBtn);
-  if (week) nav.append(button("🏫 Class schedule", openScheduleEditor));
+  const nav = el("div", "cal-right");
+  nav.append(modes, dropdown("⋯", [
+    [`Calendars${shownCals.size ? ` (${calendars.filter((c) => shownCals.has(c.id)).length})` : ""}${calPanelOpen ? " ✓" : ""}`, () => {
+      calPanelOpen = !calPanelOpen;
+      render();
+    }],
+    week ? ["🏫 Class schedule", openScheduleEditor] : null,
+  ], { title: "Calendar options" }));
 
   // Week view shows the week containing the selected day; month view shows calMonth.
   const first = week
     ? new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate() - selectedDay.getDay())
     : new Date(calMonth.getFullYear(), calMonth.getMonth(), 1 - calMonth.getDay());
   const totalDays = week ? 7 : 42;
-  head.append(el("h3", "", week ? weekTitle(first) : calMonth.toLocaleString([], { month: "long", year: "numeric" })), nav);
+  const left = el("div", "cal-left");
+  left.append(el("h3", "", week ? weekTitle(first) : calMonth.toLocaleString([], { month: "long", year: "numeric" })), stepper);
+  head.append(left, nav);
 
   const panel = calPanelOpen ? renderCalPanel() : null;
 
@@ -740,6 +750,95 @@ function hasData() {
   return sourceItems.length > 0 || manualItems.length > 0 || templates.length > 0;
 }
 
+// Welcome card when there's nothing to show yet (not signed in, no demo, no own assignments).
+function updateWelcome() {
+  $("welcome").classList.toggle("hidden", hasData() || !!accessToken || view === "settings");
+}
+
+// ---------- Small dropdown menus ----------
+
+// entries: [label, onClick] pairs, ready-made buttons, or null (skipped).
+function dropdown(label, entries, { title } = {}) {
+  const wrap = el("div", "dropdown");
+  const pop = el("div", "menu-pop");
+  pop.setAttribute("role", "menu");
+  const trigger = button(label, () => {
+    const open = !wrap.classList.contains("open");
+    closeMenus();
+    wrap.classList.toggle("open", open);
+    trigger.setAttribute("aria-expanded", String(open));
+  });
+  trigger.className = "ghost menu-trigger";
+  trigger.setAttribute("aria-haspopup", "menu");
+  trigger.setAttribute("aria-expanded", "false");
+  if (title) { trigger.title = title; trigger.setAttribute("aria-label", title); }
+  for (const e of entries) {
+    if (!e) continue;
+    const b = e instanceof Element ? e : button(e[0], e[1]);
+    b.setAttribute("role", "menuitem");
+    pop.append(b);
+  }
+  pop.addEventListener("click", (ev) => { if (ev.target.closest("button")) closeMenus(); });
+  wrap.append(trigger, pop);
+  return wrap;
+}
+
+function closeMenus() {
+  document.querySelectorAll(".dropdown.open").forEach((d) => {
+    d.classList.remove("open");
+    d.querySelector(".menu-trigger")?.setAttribute("aria-expanded", "false");
+  });
+  document.querySelectorAll("details.filters[open]").forEach((d) => d.removeAttribute("open"));
+  const pm = document.getElementById("profileMenu");
+  if (pm && !pm.hidden) {
+    pm.hidden = true;
+    $("profileBtn").setAttribute("aria-expanded", "false");
+  }
+}
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".dropdown, details.filters, .profile")) closeMenus();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenus(); });
+
+// ---------- Profile button (your Google picture) ----------
+
+let profile = (() => { try { return JSON.parse(localStorage.getItem("profile")); } catch { return null; } })();
+
+async function loadProfile() {
+  try {
+    const p = await api("userinfo", {}, "https://www.googleapis.com/oauth2/v3/");
+    profile = { name: p.name || "", email: p.email || "", picture: p.picture || "" };
+    try { localStorage.setItem("profile", JSON.stringify(profile)); } catch {}
+  } catch {
+    // Older sign-ins don't include this permission yet; keep the generic icon.
+  }
+  renderProfile();
+}
+
+function renderProfile() {
+  const btn = $("profileBtn");
+  btn.innerHTML = "";
+  if (profile?.picture) {
+    const img = el("img");
+    img.src = profile.picture;
+    img.alt = "";
+    img.referrerPolicy = "no-referrer";
+    img.onerror = () => { profile.picture = ""; renderProfile(); };
+    btn.append(img);
+  } else if (profile?.name) {
+    btn.append(el("span", "initials", profile.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()));
+  } else {
+    btn.innerHTML = ICONS.user;
+  }
+  const who = $("menuWho");
+  who.innerHTML = "";
+  if (profile?.name || profile?.email) {
+    who.append(el("b", "", profile.name || "Signed in"), el("span", "", profile.email || ""));
+  } else {
+    who.append(el("b", "", accessToken ? "Signed in" : "Not signed in"), el("span", "", accessToken ? "" : "Sign in to load Classroom"));
+  }
+}
+
 function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function startOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
 function dayKey(d) { return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }
@@ -803,21 +902,23 @@ function renderItem(item, rank, now) {
   const right = document.createElement("div");
   right.className = "item-actions";
   right.append(badge);
+  const acts = el("div", "row-actions");
+  right.append(acts);
   if (item.link) {
     const openLink = a.cloneNode(false);
     openLink.className = "open";
     openLink.textContent = "Open ↗";
-    right.append(openLink);
+    acts.append(openLink);
   }
   if (!item.turnedIn) {
     const doneBtn = el("button", "hide-btn done-btn", item.markedDone ? "Undo done" : "✓ Done");
     doneBtn.title = item.manual ? "Mark this finished" : "Mark finished in this app (doesn't turn it in on Classroom)";
     doneBtn.onclick = () => toggleCompleted(item);
-    right.append(doneBtn);
+    acts.append(doneBtn);
   }
   if (item.manual) {
-    right.append(button("Edit", () => openAssignmentForm(item)));
-    right.lastChild.className = "hide-btn";
+    acts.append(button("Edit", () => openAssignmentForm(item)));
+    acts.lastChild.className = "hide-btn";
   }
   const toggle = el("button", "hide-btn", item.removed ? "Restore" : "Remove");
   toggle.title = item.removed ? "Put this back in your list" : "Remove from your list (turn on Show removed to see it again)";
@@ -827,7 +928,7 @@ function renderItem(item, rank, now) {
     saveRemoved();
     render();
   };
-  right.append(toggle);
+  acts.append(toggle);
 
   li.append(r, body, right);
   return li;
@@ -924,6 +1025,20 @@ $("demoBtn").onclick = loadDemo;
 $("addBtn").onclick = () => openAssignmentForm();
 $("notifyBtn").onclick = toggleNotifications;
 $("settingsBtn").onclick = () => setView(view === "settings" ? lastView : "settings");
+$("profileBtn").onclick = (e) => {
+  e.stopPropagation();
+  const menu = $("profileMenu");
+  const open = menu.hidden;
+  closeMenus();
+  menu.hidden = !open;
+  $("profileBtn").setAttribute("aria-expanded", String(open));
+};
+$("profileMenu").addEventListener("click", (e) => { if (e.target.closest("button")) closeMenus(); });
+$("welcomeSignIn").onclick = () => signIn();
+$("welcomeDemo").onclick = loadDemo;
+$("welcomeAdd").onclick = () => openAssignmentForm();
+renderProfile();
+updateWelcome();
 updateNotifyButton();
 $("listViewBtn").onclick = () => setView("list");
 $("calViewBtn").onclick = () => setView("calendar");
