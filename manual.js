@@ -7,16 +7,17 @@ const saveJSON = (key, value) => { try { localStorage.setItem(key, JSON.stringif
 // { id, title, course, due (ISO string), notes, taskId? }
 let manualItems = loadJSON("manualItems", []);
 const completed = new Set(loadJSON("completed", []));
-const priorities = loadJSON("priorities", {}); // id -> "high" | "low" (normal when missing)
+const priorities = loadJSON("priorities", {}); // id -> "urgent" | "high" | "low" (normal when missing)
 
 function saveManual() { saveJSON("manualItems", manualItems); }
 function saveCompleted() { saveJSON("completed", [...completed]); }
 function savePriorities() { saveJSON("priorities", priorities); }
 
 const PRIORITY = {
-  high:   { label: "High",   rank: 0, icon: "🔴" },
-  normal: { label: "Normal", rank: 1, icon: "" },
-  low:    { label: "Low",    rank: 2, icon: "⚪️" },
+  urgent: { label: "Urgent", rank: 0, icon: "‼️" },
+  high:   { label: "High",   rank: 1, icon: "🔴" },
+  normal: { label: "Normal", rank: 2, icon: "" },
+  low:    { label: "Low",    rank: 3, icon: "⚪️" },
 };
 function priorityOf(item) { return priorities[item.id] || "normal"; }
 
@@ -30,8 +31,10 @@ function manualAsItems() {
     notes: m.notes || "",
     manual: true,
     fromTask: !!m.taskId,
+    templateId: m.templateId || null,
+    kind: m.kind || null,
     turnedIn: false,
-    link: null,
+    link: m.link || null,
   }));
 }
 
@@ -100,36 +103,73 @@ function fromDateTimeInputs(date, time) {
 
 // ---------- Add / edit assignment form ----------
 
-function openAssignmentForm(existing) {
+// prefill: values from Smart Add for a new assignment.
+function openAssignmentForm(existing, prefill = null) {
   const m = existing ? manualItems.find((x) => x.id === existing.id) : null;
-  const due = m?.due ? new Date(m.due) : null;
+  const src = m || prefill || {};
+  const due = src.due ? new Date(src.due) : null;
   const form = el("form", "form");
 
-  const title = inputEl("text", m?.title || "", { required: true, placeholder: "e.g. Chapter 6 worksheet" });
+  const title = inputEl("text", src.title || "", { required: true, placeholder: "e.g. Chapter 6 worksheet" });
   const courseList = el("datalist");
   courseList.id = "courseOptions";
   [...new Set(items.map((i) => i.course))].sort().forEach((c) => courseList.append(new Option(c)));
-  const course = inputEl("text", m?.course || "", { placeholder: "e.g. Biology" });
+  const course = inputEl("text", src.course || "", { placeholder: "e.g. Biology" });
   course.setAttribute("list", "courseOptions");
   const date = inputEl("date", due ? dateInputValue(due) : "", { required: true });
   const time = inputEl("time", due ? timeInputValue(due) : "23:59");
-  const prio = selectEl(Object.entries(PRIORITY).map(([k, p]) => [k, p.label]), existing ? priorityOf(existing) : "normal");
-  const est = selectEl(ESTIMATE_CHOICES.map((n) => [n, fmtMinutes(n)]), existing ? estimateOf(existing) : 30);
+  const kind = selectEl(TYPES.map((t) => [t, t]), src.kind || "Homework");
+  const prio = selectEl(Object.entries(PRIORITY).map(([k, p]) => [k, p.label]), existing ? priorityOf(existing) : src.priority || "normal");
+  const startMin = existing ? estimateOf(existing) : src.minutes || TYPE_MINUTES[src.kind || "Homework"];
+  const est = selectEl([...new Set([...ESTIMATE_CHOICES, startMin])].sort((a, b) => a - b).map((n) => [n, fmtMinutes(n)]), startMin);
+  let estTouched = !!(existing || src.minutes);
+  est.onchange = () => (estTouched = true);
+  kind.onchange = () => { if (!estTouched) est.value = TYPE_MINUTES[kind.value]; };
+  const link = inputEl("url", src.link || "", { placeholder: "Optional link (Classroom, Canvas, doc…)" });
   const notes = el("textarea");
   notes.rows = 2;
-  notes.value = m?.notes || "";
+  notes.value = src.notes || "";
   notes.placeholder = "Optional";
 
   const row = el("div", "field-row");
   row.append(field("Due date", date), field("Time", time));
   const row2 = el("div", "field-row");
-  row2.append(field("Priority", prio), field("Time needed", est));
-  form.append(field("Assignment", title), field("Class", course), courseList, row, row2, field("Notes", notes));
+  row2.append(field("Type", kind), field("Priority", prio), field("Time needed", est));
+  form.append(field("Assignment", title), field("Class", course), courseList, row, row2, field("Link", link), field("Notes", notes));
+
+  // New assignments: optional steps and repeating.
+  let steps = null, repeat = null;
+  if (!m) {
+    steps = el("textarea");
+    steps.rows = 2;
+    steps.placeholder = "Optional: one step per line";
+    const suggest = button("Suggest steps", () => {
+      steps.value = suggestedSteps({ kind: kind.value, id: "", points: 0 }).join("\n");
+    });
+    suggest.type = "button";
+    suggest.className = "link-btn";
+    const stepsField = field("Checklist", steps);
+    stepsField.append(suggest);
+    repeat = selectEl(Object.entries(REPEATS), "none");
+    form.append(stepsField, field("Repeat", repeat));
+  } else if (m.templateId && templates.some((t) => t.id === m.templateId)) {
+    const t = templates.find((x) => x.id === m.templateId);
+    const stop = button(`Stop repeating (${REPEATS[t.repeat].toLowerCase()})`, () => {
+      stopRepeating(t.id);
+      closeModal();
+      render();
+    });
+    stop.type = "button";
+    stop.className = "link-btn";
+    form.append(stop);
+  }
 
   const actions = el("div", "modal-actions");
   if (m) {
     const del = button("Delete", () => {
       manualItems = manualItems.filter((x) => x.id !== m.id);
+      const t = templates.find((x) => x.id === m.templateId);
+      if (t) { t.skip.push(m.id); saveTemplates(); } // don't re-create this copy
       saveManual();
       closeModal();
       render();
@@ -145,9 +185,11 @@ function openAssignmentForm(existing) {
 
   if (!m) {
     const importRow = el("p", "sub import-row");
+    const smart = button("✨ Smart Add / scan a photo", openSmartAdd);
+    smart.type = "button";
     const imp = button("Import from Google Tasks…", () => openTasksImport());
     imp.type = "button";
-    importRow.append("Or ", imp);
+    importRow.append("Or ", smart, " ", imp);
     form.append(importRow);
   }
 
@@ -158,16 +200,29 @@ function openAssignmentForm(existing) {
       id: m?.id || "manual:" + Date.now().toString(36),
       title: title.value.trim(),
       course: course.value.trim() || "My assignments",
+      kind: kind.value,
+      link: link.value.trim(),
       due: fromDateTimeInputs(date.value, time.value).toISOString(),
       notes: notes.value.trim(),
       ...(m?.taskId && { taskId: m.taskId }),
+      ...(m?.templateId && { templateId: m.templateId }),
     };
-    if (m) Object.assign(m, data);
-    else manualItems.push(data);
-    saveManual();
-    setPriority(data.id, prio.value, false);
-    estimates[data.id] = Number(est.value);
-    saveEstimates();
+    if (repeat && repeat.value !== "none") {
+      // Repeating: save a template; the copies (including this first one) are created from it.
+      const t = { id: "tpl" + Date.now().toString(36), title: data.title, course: data.course, kind: data.kind, link: data.link,
+        notes: data.notes, minutes: Number(est.value), priority: prio.value, repeat: repeat.value, first: data.due, skip: [] };
+      templates.push(t);
+      saveTemplates();
+      ensureRecurring();
+    } else {
+      if (m) Object.assign(m, data);
+      else manualItems.push(data);
+      saveManual();
+      setPriority(data.id, prio.value, false);
+      estimates[data.id] = Number(est.value);
+      saveEstimates();
+      if (steps?.value.trim()) setSteps(data.id, steps.value.split("\n").map((x) => x.trim()).filter(Boolean));
+    }
     closeModal();
     render();
   };
@@ -185,7 +240,7 @@ function setPriority(id, value, rerender = true) {
 // Small "Priority" dropdown shown on each open assignment.
 function priorityPicker(item) {
   const wrap = el("label", "est prio");
-  wrap.title = "Priority. High is listed and planned earlier.";
+  wrap.title = "Priority. Urgent and High are listed and planned earlier.";
   const sel = selectEl(Object.entries(PRIORITY).map(([k, p]) => [k, `${p.icon ? p.icon + " " : ""}${p.label}`]), priorityOf(item));
   sel.onchange = () => setPriority(item.id, sel.value);
   wrap.append("Priority ", sel);

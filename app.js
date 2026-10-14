@@ -395,6 +395,7 @@ function compare(a, b) {
 
 function render() {
   const now = Date.now();
+  ensureRecurring();
   items = [...sourceItems, ...manualAsItems()];
   for (const i of items) {
     i.markedDone = !i.turnedIn && completed.has(i.id);
@@ -428,6 +429,7 @@ function render() {
   $("sWeek").textContent = open.filter((i) => i.tier === "urgent" || i.tier === "soon").length;
   $("sOpen").textContent = open.length;
 
+  renderRightNow(now);
   renderPlanBar(now);
   $("lists").classList.toggle("hidden", view !== "list");
   $("calendar").classList.toggle("hidden", view !== "calendar");
@@ -472,6 +474,13 @@ function renderCalendar(visible, now) {
   }
   const evByDay = eventsByDay();
   const planByDay = planBlocksByDay();
+  const busyByDay = new Map();
+  const calStart = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 20);
+  for (const b of busyOccurrences(calStart, new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 15))) {
+    const k = dayKey(b.start);
+    if (!busyByDay.has(k)) busyByDay.set(k, []);
+    busyByDay.get(k).push(b);
+  }
 
   const cal = $("calendar");
   cal.innerHTML = "";
@@ -522,6 +531,7 @@ function renderCalendar(visible, now) {
     const due = (byDay.get(k) || []).sort(compare);
     const evs = evByDay.get(k) || [];
     const study = planByDay.get(k) || [];
+    const busyHere = busyByDay.get(k) || [];
 
     const cell = el("div", "cal-day");
     cell.tabIndex = 0;
@@ -545,8 +555,10 @@ function renderCalendar(visible, now) {
         const a = el("a", `chip plan${b.soft ? " soft" : ""}`, week ? `${blockLabel(b)} · 📖 ${b.item.title}` : `📖 ${b.item.title}`);
         if (b.item.link) a.href = b.item.link;
         a.title = `Study: ${b.item.title} · ${blockLabel(b)}`;
+        a.style.borderColor = classColor(b.item.course);
         return a;
       }),
+      ...busyHere.map((b) => el("span", "chip busy", week ? `${fmtTime(b.start)} · ${b.title}` : b.title)),
       ...evs.map((e) => {
         const a = el("a", "chip ev", week ? `${eventTime(e)} · ${e.title}` : e.title);
         a.href = e.link;
@@ -569,6 +581,7 @@ function renderCalendar(visible, now) {
       const dots = el("div", "dots");
       due.forEach((i) => dots.append(el("span", `dot t-${i.tier}`)));
       study.forEach(() => dots.append(el("span", "dot plan")));
+      busyHere.forEach(() => dots.append(el("span", "dot busy")));
       evs.forEach((e) => {
         const d = el("span", "dot ev");
         d.style.setProperty("--ev", calColor(e.calId));
@@ -605,6 +618,11 @@ function renderCalendar(visible, now) {
     const ol = el("ol");
     dayStudy.forEach((b) => ol.append(renderPlanRow(b, now)));
     detail.append(ol);
+  }
+  const dayBusy = busyByDay.get(selKey) || [];
+  if (dayBusy.length) {
+    detail.append(el("h2", "", `Busy (${dayBusy.length})`));
+    detail.append(el("p", "sub", dayBusy.map((b) => `${b.title} ${fmtTime(b.start)}–${fmtTime(b.end)}`).join(" · ")));
   }
   if (dayEvents.length) {
     detail.append(el("h2", "", `Events (${dayEvents.length})`));
@@ -698,7 +716,7 @@ function setView(v) {
 }
 
 function hasData() {
-  return sourceItems.length > 0 || manualItems.length > 0;
+  return sourceItems.length > 0 || manualItems.length > 0 || templates.length > 0;
 }
 
 function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
@@ -739,12 +757,16 @@ function renderItem(item, rank, now) {
   const meta = document.createElement("div");
   meta.className = "meta";
   const parts = [item.course];
-  if (item.priority === "high") parts.unshift("🔴 High priority");
+  const kind = typeOf(item);
+  if (kind) parts.push(kind);
+  if (item.priority === "urgent" || item.priority === "high") parts.unshift(`${PRIORITY[item.priority].icon} ${PRIORITY[item.priority].label}`);
+  if (item.templateId) parts.push("🔁 repeats");
   if (item.due) parts.push("Due " + fmtDate(item.due));
   if (item.points) parts.push(`${item.points} pts`);
   if (item.tier === "done" && item.grade != null) parts.push(`Grade: ${item.grade}/${item.points}`);
   if (item.fromTask) parts.push("from Google Tasks");
   meta.textContent = parts.join(" · ");
+  meta.prepend(classDot(item.course));
 
   const badge = document.createElement("span");
   badge.className = "badge";
@@ -754,7 +776,7 @@ function renderItem(item, rank, now) {
   if (item.notes) body.append(el("div", "notes", item.notes));
   if (!item.done) {
     const pickers = el("div", "pickers");
-    pickers.append(estimatePicker(item), priorityPicker(item));
+    pickers.append(estimatePicker(item), priorityPicker(item), checklistControls(item));
     body.append(pickers);
   }
   const right = document.createElement("div");
@@ -897,7 +919,7 @@ if (savedAt) {
   render();
   setStatus(`Showing saved data from ${fmtDate(savedAt)}. Click Refresh for the latest.`);
 }
-if (!savedAt && manualItems.length) render();
+if (!savedAt && hasData()) render();
 if (accessToken) {
   showSignedInButtons();
   load();

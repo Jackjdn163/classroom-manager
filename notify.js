@@ -19,7 +19,7 @@ async function toggleNotifications() {
       return updateNotifyButton();
     }
     saveJSON("notify", true);
-    notify("Reminders are on", "You'll get a heads-up 5 minutes before study sessions and before things are due.");
+    notify("Reminders are on", "You'll get a heads-up before study sessions and before things are due.");
   }
   updateNotifyButton();
   checkReminders();
@@ -43,7 +43,7 @@ function checkReminders(now = Date.now()) {
   for (const b of activePlanBlocks()) {
     if (b.done) continue;
     const lead = b.start - now;
-    if (lead <= 5 * 60e3 && lead > -5 * 60e3) add(`b:${b.id}:${+b.start}`, `Study time: ${b.item.title}`, `${blockLabel(b)} · ${b.item.course}`, +b.start);
+    if (lead <= Math.max(1, PLAN.reminderLeadMin) * 60e3 && lead > -5 * 60e3) add(`b:${b.id}:${+b.start}`, `Study time: ${b.item.title}`, `${blockLabel(b)} · ${b.item.course}`, +b.start);
   }
   for (const i of items) {
     if (i.done || i.removed || !i.due) continue;

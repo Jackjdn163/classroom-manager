@@ -173,6 +173,35 @@
     .task-row input { margin-top: 3px; }
     .task-info { display: flex; flex-direction: column; }
     .task-title { font-weight: 600; color: var(--text); }
+    .class-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+    .link-btn { border: 0; background: transparent; color: var(--accent); padding: 2px 4px; font-size: 13px; }
+    .checklist-wrap { flex-basis: 100%; }
+    .checklist { list-style: none; margin: 4px 0; padding: 0; }
+    .checklist li { display: flex; justify-content: space-between; align-items: center; font-size: 14px; padding: 2px 0; }
+    .checklist li.done label { text-decoration: line-through; color: var(--muted); }
+    .add-step { display: flex; gap: 6px; align-items: center; }
+    .add-step input { font: inherit; font-size: 14px; flex: 1; min-width: 0; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--bg); color: var(--text); }
+    .chip.busy { background: var(--later-bg); color: var(--muted); }
+    .dot.busy { background: var(--muted); }
+    .busy-list { display: flex; flex-direction: column; gap: 6px; }
+    .busy-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; }
+    .modal h4 { margin: 14px 0 6px; font-size: 14px; }
+    .color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; }
+    .color-pick { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+    .color-pick input { width: 28px; height: 22px; padding: 0; border: 0; background: none; }
+    .smart-preview { min-height: 1.2em; }
+    .right-now { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 20px; }
+    .rn-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-bottom: 10px; }
+    .rn-status { font-size: 13px; font-weight: 600; padding: 2px 10px; border-radius: 999px; }
+    .rn-status.ok { color: var(--done); background: var(--done-bg); }
+    .rn-status.focus { color: var(--urgent); background: var(--urgent-bg); }
+    .rn-status.warn { color: var(--missing); background: var(--missing-bg); }
+    .rn-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; }
+    .rn-info { min-width: 0; flex: 1 1 240px; }
+    .kicker { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .rn-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .rn-clock { font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 700; margin-right: 4px; }
     .hidden { display: none !important; }
     code { background: var(--later-bg); padding: 1px 5px; border-radius: 4px; }
   </style>
@@ -197,6 +226,7 @@
   <div id="message" class="notice hidden"></div>
 
   <section id="app" class="hidden">
+    <div id="rightNow" class="right-now hidden"></div>
     <div id="planBar" class="plan-bar"></div>
     <div class="stats">
       <div class="stat missing"><b id="sMissing">0</b><span>Missing</span></div>
@@ -224,6 +254,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="manual.js"></script>
 <script src="planner.js"></script>
+<script src="extras.js"></script>
 <script src="google.js"></script>
 <script src="notify.js"></script>
 <script src="app.js"></script>

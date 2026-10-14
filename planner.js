@@ -15,12 +15,14 @@ const PLAN_DEFAULTS = {
   minBlockMin: 15,
   breakMin: 10,                // gap after each block
   daysOff: [],                 // "YYYY-MM-DD" dates with no school
+  dailyTargetMin: 180,         // aim for at most this much on school days (goes over only if needed)
+  reminderLeadMin: 5,          // reminder this long before a study session
 };
 let PLAN = { ...PLAN_DEFAULTS, ...loadJSON("planSettings", {}) };
 function savePlanSettings() { saveJSON("planSettings", PLAN); }
 
-// High priority is planned as if due a day earlier; low as if a day later.
-const PRIORITY_SHIFT = { high: -24 * 3600e3, normal: 0, low: 24 * 3600e3 };
+// Urgent is planned as if due 2 days earlier, High 1 day earlier, Low 1 day later.
+const PRIORITY_SHIFT = { urgent: -48 * 3600e3, high: -24 * 3600e3, normal: 0, low: 24 * 3600e3 };
 
 // ---------- Time estimates ----------
 
@@ -29,6 +31,7 @@ function saveEstimates() { saveJSON("estimates", estimates); }
 
 function guessMinutes(item) {
   if (item.type === "MULTIPLE_CHOICE_QUESTION" || item.type === "SHORT_ANSWER_QUESTION") return 15;
+  if (item.kind) return TYPE_MINUTES[item.kind] || 30;
   if (item.manual) return 30;
   const p = item.points || 0;
   if (!p) return 30;
@@ -80,7 +83,7 @@ function planTasks() {
 
 function planSignature(tasks) {
   return tasks.map((t) => `${t.item.id}:${t.minutes}:${+t.item.due}:${t.item.priority}`).sort().join("|")
-    + "#" + [...shownCals].sort().join(",") + "#" + JSON.stringify(PLAN);
+    + "#" + [...shownCals].sort().join(",") + "#" + JSON.stringify(PLAN) + "#" + JSON.stringify(busyTimes);
 }
 
 // Blocks to keep when remaking the plan: ones you checked off, and upcoming ones you edited or added.
@@ -185,11 +188,14 @@ function schedule(tasks, now, weekEnd, keptFuture) {
     let left = 0;
     while (queue.length) {
       const want = queue.shift();
-      // Whole session in normal hours, then past bedtime, then a shorter piece of either.
-      const got = place(t, want, false, false)
-        || (canGoLate && place(t, want, true, false))
-        || place(t, want, false, true)
-        || (canGoLate && place(t, want, true, true));
+      // Stay within the daily target if possible (splitting the session if needed);
+      // only then go over it, and only then past bedtime.
+      const got = place(t, want, false, false, false)
+        || place(t, want, false, true, false)
+        || place(t, want, false, false, true)
+        || (canGoLate && place(t, want, true, false, true))
+        || place(t, want, false, true, true)
+        || (canGoLate && place(t, want, true, true, true));
       if (!got) { left += want + queue.reduce((a, b) => a + b, 0); break; }
       if (got < want) queue.unshift(want - got);
     }
@@ -198,7 +204,7 @@ function schedule(tasks, now, weekEnd, keptFuture) {
   return { blocks, unfit };
 
   // Puts up to `want` minutes of t on the best day; returns minutes placed (0 if none).
-  function place(t, want, soft, partial) {
+  function place(t, want, soft, partial, overTarget) {
     const order = t.days
       .map((k, n) => ({ k, n, score: (load.get(k) || 0) + (sameTask.has(t.item.id + "|" + k) ? 10000 : 0) }))
       .sort((a, b) => (a.score - b.score) || (a.n - b.n));
@@ -207,9 +213,14 @@ function schedule(tasks, now, weekEnd, keptFuture) {
       for (const s of slotsByDay.get(k) || []) {
         if (s.soft !== soft) continue;
         const used = load.get(k) || 0;
-        const fits = Math.floor(Math.min((Math.min(+s.end, +t.deadline) - s.start) / 60e3, s.cap - used));
+        // School days have no hard cap, just the daily target (which can be exceeded if needed).
+        const cap = s.cap === Infinity && !overTarget ? PLAN.dailyTargetMin : s.cap;
+        const fits = Math.floor(Math.min((Math.min(+s.end, +t.deadline) - s.start) / 60e3, cap - used));
         if (fits < need) continue;
-        const len = Math.min(want, fits);
+        let len = Math.min(want, fits);
+        // Don't leave a tiny leftover piece; make this one a bit shorter instead.
+        const leftover = want - len;
+        if (leftover > 0 && leftover < PLAN.minBlockMin && len - (PLAN.minBlockMin - leftover) >= need) len -= PLAN.minBlockMin - leftover;
         const start = new Date(s.start);
         const end = new Date(+start + len * 60e3);
         blocks.push({ id: blockId(), itemId: t.item.id, start, end, soft });
@@ -245,6 +256,7 @@ function freeSlots(now, horizon, extraBusy = []) {
   const busy = events
     .filter((e) => shownCals.has(e.calId) && !e.allDay && e.calId !== studyCalendarId())
     .map((e) => [+e.start, +e.end])
+    .concat(busyOccurrences(now, horizon).map((b) => [+b.start, +b.end]))
     .concat(extraBusy);
   const slots = [];
   for (let day = startOfDay(now); day < horizon; day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)) {
@@ -301,6 +313,8 @@ function blockLabel(b) {
 
 function toggleBlockDone(b) {
   b.done = !b.done;
+  if (b.done) logStudy("block:" + b.id, blockMinutes(b), b.item, b.start);
+  else unlogStudy("block:" + b.id);
   savePlan();
   render();
 }
@@ -323,9 +337,13 @@ function renderPlanRow(b, now) {
   }
   const bits = [blockLabel(b), b.item.course];
   if (b.parts > 1) bits.push(`part ${b.part} of ${b.parts}`);
+  const step = !b.done && nextStep(b.item);
+  if (step) bits.push("next step: " + step);
   if (b.locked) bits.push("📌 edited");
   if (b.soft) bits.push("past bedtime, needed to finish on time");
-  body.append(a, el("div", "meta", bits.join(" · ")));
+  const meta = el("div", "meta", bits.join(" · "));
+  meta.prepend(classDot(b.item.course));
+  body.append(a, meta);
 
   const edit = button("Edit", () => openBlockEditor(b));
   edit.className = "hide-btn";
@@ -419,6 +437,8 @@ function openPlanSettings() {
   const cap = selectEl([60, 120, 180, 240, 300, 360, 480, 600].map((m) => [m, fmtMinutes(m)]), PLAN.weekendCapMin);
   const block = selectEl([30, 45, 60, 90, 120].map((m) => [m, fmtMinutes(m)]), PLAN.maxBlockMin);
   const brk = selectEl([0, 5, 10, 15, 20, 30].map((m) => [m, m ? fmtMinutes(m) : "No break"]), PLAN.breakMin);
+  const target = selectEl([60, 90, 120, 150, 180, 240, 300, 360].map((m) => [m, fmtMinutes(m)]), PLAN.dailyTargetMin);
+  const lead = selectEl([0, 5, 10, 15, 30].map((m) => [m, m ? fmtMinutes(m) + " before" : "When it starts"]), PLAN.reminderLeadMin);
 
   const daysOff = [...PLAN.daysOff];
   const offList = el("div", "chips-list");
@@ -451,8 +471,31 @@ function openPlanSettings() {
   r3.append(field("Past bedtime if needed", soft), field("Max work on days off", cap));
   const r4 = el("div", "field-row");
   r4.append(field("Longest study block", block), field("Break between blocks", brk));
+  const r5 = el("div", "field-row");
+  r5.append(field("Daily study target (school days)", target), field("Study session reminders", lead));
 
-  form.append(field("School days", days), r1, offRow, offList, r2, r3, r4);
+  // Class colors
+  const colorInputs = [];
+  const colors = el("div", "color-grid");
+  for (const c of [...new Set(items.map((i) => i.course))].sort()) {
+    const input = inputEl("color", classColor(c));
+    colorInputs.push([c, input]);
+    const label = el("label", "color-pick");
+    label.append(input, " " + c);
+    colors.append(label);
+  }
+
+  // Backup and restore
+  const backup = el("div", "field-row align-end");
+  const exp = button("⬇ Download backup", exportBackup);
+  exp.type = "button";
+  const imp = inputEl("file", null, { accept: "application/json,.json" });
+  imp.onchange = () => imp.files[0] && importBackup(imp.files[0]);
+  backup.append(exp, field("Restore from a backup file", imp));
+
+  form.append(field("School days", days), r1, offRow, offList, r2, r3, r4, r5);
+  if (colorInputs.length) form.append(el("h4", "", "Class colors"), colors);
+  form.append(el("h4", "", "Backup"), el("p", "sub", "Your own assignments, plan, settings, checklists and study history are saved only in this browser. Download a backup to keep them safe or move them to another device."), backup);
   const actions = el("div", "modal-actions");
   const reset = button("Reset to defaults", () => {
     PLAN = { ...PLAN_DEFAULTS };
@@ -480,18 +523,24 @@ function openPlanSettings() {
       weekendCapMin: Number(cap.value),
       maxBlockMin: Number(block.value),
       breakMin: Number(brk.value),
+      dailyTargetMin: Number(target.value),
+      reminderLeadMin: Number(lead.value),
       daysOff,
     };
     savePlanSettings();
+    for (const [c, input] of colorInputs) {
+      if (input.value !== classColor(c) || classColors[c]) classColors[c] = input.value;
+    }
+    saveJSON("classColors", classColors);
     closeModal();
     render();
   };
-  openModal("Study hours", form, { wide: true });
+  openModal("Settings", form, { wide: true });
 }
 
 function settingsSummary() {
   const t = (x) => fmtTime(new Date(2023, 0, 1, x[0], x[1]));
-  return `School ${t(PLAN.schoolStart)}–${t(PLAN.schoolEnd)} · bedtime ${t(PLAN.bedtime)} · up to ${fmtMinutes(PLAN.weekendCapMin)} on days off`;
+  return `School ${t(PLAN.schoolStart)}–${t(PLAN.schoolEnd)} · bedtime ${t(PLAN.bedtime)} · aim for ${fmtMinutes(PLAN.dailyTargetMin)} a day`;
 }
 
 // ---------- Plan panel: buttons, warnings, Today / This week ----------
@@ -508,7 +557,7 @@ function renderPlanBar(now) {
     render();
   });
   make.classList.add("primary");
-  top.append(make, button("+ Study session", () => openBlockEditor()), button("⚙ Study hours", openPlanSettings));
+  top.append(make, button("+ Study session", () => openBlockEditor()), button(`Busy times${busyTimes.length ? ` (${busyTimes.length})` : ""}`, openBusyTimes), button("⚙ Settings", openPlanSettings));
   if (typeof calendarSyncButton === "function") top.append(calendarSyncButton());
   bar.append(top);
 

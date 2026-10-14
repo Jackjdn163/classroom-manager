@@ -62,15 +62,24 @@ This needs the **Google Calendar API** turned on in your Google Cloud project (*
 
 ## Your own assignments
 
-- **+ Add assignment:** add anything that isn't in Classroom (name, class, due date and time, priority, time needed, notes). Click **Edit** on it to change or delete it.
-- **Import from Google Tasks:** in the Add assignment window. Choose which unfinished tasks to add. Each task list becomes the "class", and due dates are set to 11:59 PM.
+- **+ Add assignment:** name, class, due date and time, **type** (Homework, Project, Essay, Quiz, Test, Studying, Other), priority, time needed, an optional **link**, notes, an optional **checklist** and **Repeat** (every day, every weekday or every week). Repeating assignments are created two weeks ahead; deleting one copy doesn't bring it back, and **Stop repeating** (in Edit) removes the upcoming copies.
+- **✨ Smart Add:** type something like "Bio quiz Friday at 3pm, 2 hours, high priority" and it fills in the form. You can also **scan a photo** of the assignment; the text is read on your device.
+- **Import from Google Tasks:** in the Add assignment window.
 - **✓ Done:** marks any assignment finished in this app. For Classroom assignments this does **not** turn it in on Classroom.
-- **Priority (High / Normal / Low):** High is listed first within its group and planned about a day earlier; Low about a day later.
+- **Priority (Urgent / High / Normal / Low):** listed first within its group and planned earlier (Urgent ≈ 2 days, High ≈ 1 day earlier; Low ≈ 1 day later).
+- **Checklist (☑ steps):** on any assignment. Use **Suggest steps** for a starting list based on the type. The next unchecked step shows on study sessions and in the Right now card.
+
+## Right now, focus timer and progress
+
+The **Right now** card shows whether you're on track, your study time over the last 7 days, your **streak** of days in a row with studying, and your top class. It suggests what to work on (the session happening now, the next one today, or your most urgent assignment).
+
+**▶ Start focus timer** times your work. **✓ Session done** checks off the planned session; **✓ Log time** (with no planned session) takes the time off that assignment's estimate; **✓ Assignment finished** also marks it done. Checking off sessions in the plan counts toward your streak too.
 
 ## Study plan
 
 Click **Make my plan** to fit your unfinished assignments into your free study time:
-- **⚙ Study hours:** school days and times, no-school days (holidays), time to start studying on days off, bedtime, how far past bedtime is allowed when needed, the most work on days off, block length and breaks.
+- **⚙ Settings:** school days and times, no-school days (holidays), time to start studying on days off, bedtime, how far past bedtime is allowed when needed, the most work on days off, a **daily study target** for school days (only exceeded when needed to finish on time), block length, breaks, reminder timing, **class colors**, and **backup / restore**.
+- **Busy times:** practices, jobs, clubs or appointments (one time, every day, weekdays or weekly). The plan works around them and they show on the calendar.
 - **Calendar events:** timed events on the calendars you've turned on are avoided. All-day events don't block time.
 - **This week:** plans today and the next 6 days. Work due after that gets a fair share of this week's time; the rest is planned in later weeks.
 - **Spread out:** each assignment is split into sessions (about 30 min or more) on different days, always on the least-busy day available, so nothing gets crammed into one day.
@@ -82,7 +91,7 @@ Click **Make my plan** to fit your unfinished assignments into your free study t
 
 ## Reminders
 
-Click **🔕 Reminders off** to turn on notifications 5 minutes before study sessions and 24 hours and 1 hour before things are due. They only appear while the app is open. For reminders on your phone or when the app is closed, use **Sync to Google Calendar**.
+Click **🔕 Reminders off** to turn on notifications before study sessions (5 minutes by default; change it in Settings) and 24 hours and 1 hour before things are due. They only appear while the app is open. For reminders on your phone or when the app is closed, use **Sync to Google Calendar**.
 
 Each assignment shows a **⏱ time estimate** (a guess from its type and points until you change it).
 
@@ -93,3 +102,7 @@ In Google Cloud → *APIs & Services → Library*, enable: **Google Classroom AP
 ## Install as a Mac app
 
 Open https://classroommanager.site in **Google Chrome**, then click the install icon at the right end of the address bar (or ⋮ menu → *Cast, save and share → Install page as app…*). It gets its own window, Dock icon and Launchpad entry, and opens with your saved data even offline.
+
+## Backups
+
+Your own assignments, plan, settings, checklists, busy times and study history live only in this browser. In **⚙ Settings → Backup**, download a backup file, and restore it on another device or browser.
