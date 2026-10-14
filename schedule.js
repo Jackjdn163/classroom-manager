@@ -88,7 +88,15 @@ function renderWeekGrid(first, { byDay, evByDay, planByDay, busyByDay, now }) {
         sub: `${blockLabel(b)}${b.parts > 1 ? ` · part ${b.part}/${b.parts}` : ""}`, startMin: minsOf(b.start, day), endMin: minsOf(b.end, day),
         color: classColor(b.item.course), onClick: () => openBlockEditor(b) });
     }
+    // Due work goes inside that class's block when the class meets that day;
+    // otherwise it gets its own marker at the due time.
+    const classes = list.filter((e) => e.kind === "class");
     for (const i of byDay.get(k) || []) {
+      const block = classes.find((c) => sameClass(c.title, i.course));
+      if (block) {
+        (block.notes ||= []).push(i);
+        continue;
+      }
       const m = minsOf(i.due, day);
       list.push({ kind: `due t-${i.tier}`, title: `⚑ Due ${fmtTime(i.due)} · ${i.title}`, sub: "", startMin: Math.max(0, m - 30), endMin: Math.max(30, m),
         href: i.link, onClick: !i.link && i.manual ? () => openAssignmentForm(i) : null });
@@ -161,6 +169,7 @@ function renderWeekGrid(first, { byDay, evByDay, planByDay, busyByDay, now }) {
       if (e.sub) t.append(el("span", "wk-inline", " · " + e.sub.split(" · ")[0]));
       node.append(t);
       if (e.sub) node.append(el("span", "wk-sub", e.sub));
+      if (e.notes) addDueNotes(node, e.notes, h);
       col.append(node);
     }
     if (k === todayKey) {
@@ -189,6 +198,49 @@ function renderWeekGrid(first, { byDay, evByDay, planByDay, busyByDay, now }) {
     }
   });
   return scroller;
+}
+
+// True when a schedule class name and a Classroom course name are the same class
+// ("Math" ~ "Math 3 Honors", "Spanish" ~ "Spanish II"), matching whole words only.
+function sameClass(className, course) {
+  const norm = (x) => " " + String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() + " ";
+  const a = norm(className), b = norm(course);
+  if (!a.trim() || !b.trim()) return false;
+  if (a.includes(b) || b.includes(a)) return true;
+  const skip = new Set(["period", "class", "honors", "advanced", "intro", "the", "and"]);
+  const words = (x) => x.trim().split(" ").filter((w) => w.length >= 4 && !skip.has(w));
+  const bw = new Set(words(b));
+  return words(a).some((w) => bw.has(w));
+}
+
+// "⚑ Due 11:59 PM · Problem Set" notes inside a class block, linking to each assignment.
+function addDueNotes(node, notes, height) {
+  // Each note takes 1 line, or 2 if the name is long; show as many as fit.
+  const lines = (i) => (`Due ${fmtTime(i.due)} · ${i.title}`.length > 26 ? 2 : 1);
+  let room = Math.max(1, Math.floor((height - 40) / 15));
+  const shown = [];
+  for (const [n, i] of notes.entries()) {
+    const need = lines(i) + (n < notes.length - 1 ? 0 : 0);
+    const leaveForMore = n < notes.length - 1 ? 1 : 0; // keep a line for "+N more" if others follow
+    if (need + (shown.length + 1 < notes.length ? leaveForMore : 0) > room && shown.length) break;
+    shown.push(i);
+    room -= need;
+  }
+  for (const i of shown) {
+    const note = el(i.link ? "a" : "button", `wk-note t-${i.tier}${i.done ? " done" : ""}`, `⚑ Due ${fmtTime(i.due)} · ${i.title}`);
+    note.title = `${i.title} · due ${fmtDate(i.due)}${i.done ? " (done)" : ""}`;
+    if (i.link) { note.href = i.link; note.target = "_blank"; note.rel = "noopener"; }
+    else { note.type = "button"; if (i.manual) note.onclick = () => openAssignmentForm(i); }
+    node.append(note);
+  }
+  if (shown.length < notes.length) {
+    const more = el("button", "wk-note more", `+${notes.length - shown.length} more due`);
+    more.type = "button";
+    more.title = notes.slice(shown.length).map((i) => i.title).join(", ");
+    more.onclick = () => { selectedDay = startOfDay(notes[0].due); render(); };
+    node.append(more);
+  }
+  node.title += " · " + notes.map((i) => `due ${fmtTime(i.due)}: ${i.title}`).join(" · ");
 }
 
 // Side-by-side columns for things that overlap in time.

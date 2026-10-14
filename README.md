@@ -71,7 +71,7 @@ This needs the **Google Calendar API** turned on in your Google Cloud project (*
 
 ## Week view and class schedule
 
-In **Calendar → Week**, you get a big hour-by-hour grid for the week: your **classes** at their real times (with **A Day / B Day** badges), lunch and bus, **study sessions** (click one to edit it), calendar events, busy times and when things are **due**, plus a line for the current time. The page gets wider in this view. Month view stays as day boxes.
+In **Calendar → Week**, you get a big hour-by-hour grid for the week: your **classes** at their real times (with **A Day / B Day** badges), lunch and bus, **study sessions** (click one to edit it), calendar events, busy times and when things are **due**, plus a line for the current time. Work due for a class shows **inside that class's block** on the day it's due (for example "⚑ Due 11:59 PM · Problem Set 4.2" in Thursday's Math block), linked to the assignment. Class names are matched by word, so "Math" matches "Math 3 Honors" and "Spanish" matches "Spanish II". If the class doesn't meet that day, or the name doesn't match, it shows as its own ⚑ marker at the due time. Tip: in 🏫 Class schedule you can pick your exact Classroom class names from the suggestions. The page gets wider in this view. Month view stays as day boxes.
 
 Click **🏫 Class schedule** (in Week view) to set it up:
 - **Rotation:** A/B days (alternating each school day, skipping weekends and your no-school days) or the same classes every day. Tell it one day you know was an A or B Day.
