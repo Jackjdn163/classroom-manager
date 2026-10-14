@@ -85,7 +85,7 @@ It starts with your old HomeworkPlanner times (8:00–2:50 with lunch 11–12 an
 
 The **Right now** card shows whether you're on track, your study time over the last 7 days, your **streak** of days in a row with studying, and your top class. It suggests what to work on (the session happening now, the next one today, or your most urgent assignment).
 
-**▶ Start focus timer** times your work. **✓ Session done** checks off the planned session; **✓ Log time** (with no planned session) takes the time off that assignment's estimate; **✓ Assignment finished** also marks it done. Checking off sessions in the plan counts toward your streak too.
+**▶ Start focus timer** opens a full-screen timer with a big countdown ring (the length of the planned session, or what's left of the estimate), the assignment and its next step. The browser tab shows the countdown too. **⤡ Minimize** (or Esc) shrinks it back to the card; **⤢ Full screen** reopens it; Space pauses. **✓ Session done** checks off the planned session; **✓ Log time** (with no planned session) takes the time off that assignment's estimate; **✓ Assignment finished** also marks it done. Checking off sessions in the plan counts toward your streak too.
 
 ## Study plan
 

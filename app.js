@@ -432,6 +432,7 @@ function render() {
 
   document.body.classList.toggle("wide", view === "calendar" && calMode === "week");
   renderRightNow(now);
+  renderFocusOverlay();
   renderPlanBar(now);
   $("lists").classList.toggle("hidden", view !== "list");
   $("calendar").classList.toggle("hidden", view !== "calendar");

@@ -400,7 +400,12 @@ const fmtClock = (s) => {
 };
 
 function startFocus(target) {
-  focusState = { itemId: target.item.id, blockId: target.block?.id || null, running: true, startedAt: Date.now(), elapsed: 0 };
+  focusState = { itemId: target.item.id, blockId: target.block?.id || null, running: true, startedAt: Date.now(), elapsed: 0, big: true };
+  saveFocus();
+  render();
+}
+function setFocusBig(big) {
+  focusState.big = big;
   saveFocus();
   render();
 }
@@ -445,11 +450,121 @@ function finishFocus(finishedAssignment) {
   render();
 }
 
-// Keep the clock ticking without redrawing the whole page.
-setInterval(() => {
-  const clock = document.getElementById("focusClock");
-  if (clock && focusState) clock.textContent = fmtClock(focusSeconds());
-}, 1000);
+// ---------- Full-screen focus view ----------
+
+const RING_R = 88, RING_C = 2 * Math.PI * RING_R;
+const APP_TITLE = document.title;
+
+// How long this session is meant to be: the planned session, else what's left of the estimate.
+function focusGoalSeconds() {
+  const block = plan?.blocks.find((b) => b.id === focusState?.blockId);
+  if (block) return Math.round(blockMinutes(block) * 60);
+  const item = items.find((i) => i.id === focusState?.itemId);
+  return item ? estimateOf(item) * 60 : 25 * 60;
+}
+
+function renderFocusOverlay() {
+  let overlay = document.getElementById("focusOverlay");
+  const item = focusState && items.find((i) => i.id === focusState.itemId);
+  if (!focusState?.big || !item) {
+    overlay?.remove();
+    return;
+  }
+  // Only rebuild when something visible changes (the page redraws itself every minute).
+  const sig = JSON.stringify([focusState.itemId, focusState.blockId, focusState.running, item.title, nextStep(item)]);
+  if (overlay && overlay.dataset.sig === sig) return tickFocus();
+  const replacing = !!overlay; // pause/resume: swap in place without the fade-in
+  overlay?.remove();
+  overlay = el("div", "focus-overlay");
+  overlay.id = "focusOverlay";
+  overlay.dataset.sig = sig;
+  if (replacing) overlay.classList.add("no-anim");
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-label", "Focus timer");
+  overlay.style.setProperty("--c", classColor(item.course));
+
+  const block = plan?.blocks.find((b) => b.id === focusState.blockId);
+  const card = el("div", "fo-card");
+  const min = button("⤡ Minimize", () => setFocusBig(false), "Minimize the focus timer");
+  min.className = "fo-min";
+  const head = el("div", "fo-head");
+  const title = el(item.link ? "a" : "span", "fo-title", item.title);
+  if (item.link) { title.href = item.link; title.target = "_blank"; title.rel = "noopener"; }
+  const step = nextStep(item);
+  head.append(
+    el("div", "kicker", focusState.running ? "Focusing on" : "Paused"),
+    title,
+    el("div", "fo-meta", [item.course, block ? `planned ${blockLabel(block)}` : "", step ? `next step: ${step}` : ""].filter(Boolean).join(" · ")),
+  );
+
+  const ring = el("div", `fo-ring${focusState.running ? "" : " paused"}`);
+  ring.innerHTML = `<svg viewBox="0 0 200 200" aria-hidden="true">
+    <circle class="fo-track" cx="100" cy="100" r="${RING_R}"/>
+    <circle class="fo-progress" id="foProgress" cx="100" cy="100" r="${RING_R}" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}"/>
+  </svg>`;
+  const center = el("div", "fo-center");
+  const time = el("div", "fo-time");
+  time.id = "foTime";
+  const label = el("div", "fo-label");
+  label.id = "foLabel";
+  center.append(time, label);
+  ring.append(center);
+
+  const ctl = el("div", "fo-controls");
+  const toggle = button(focusState.running ? "❚❚ Pause" : "▶ Resume", focusState.running ? pauseFocus : resumeFocus);
+  toggle.className = "fo-main";
+  ctl.append(
+    toggle,
+    button(block ? "✓ Session done" : "✓ Log time", () => finishFocus(false)),
+    button("✓ Assignment finished", () => finishFocus(true)),
+  );
+  const cancel = button("Cancel session", cancelFocus);
+  cancel.className = "link-btn fo-cancel";
+
+  card.append(min, head, ring, ctl, cancel);
+  overlay.append(card);
+  document.body.append(overlay);
+  tickFocus();
+}
+
+// Updates the clocks, the ring and the tab title every second.
+function tickFocus() {
+  if (!focusState) {
+    if (document.title !== APP_TITLE) document.title = APP_TITLE;
+    return;
+  }
+  const spent = focusSeconds();
+  const goal = focusGoalSeconds();
+  const left = goal - spent;
+  const small = document.getElementById("focusClock");
+  if (small) small.textContent = left >= 0 ? fmtClock(left) : "+" + fmtClock(-left);
+  const time = document.getElementById("foTime");
+  if (time) {
+    time.textContent = left >= 0 ? fmtClock(left) : "+" + fmtClock(-left);
+    document.getElementById("foLabel").textContent = left >= 0
+      ? `left of ${fmtMinutes(Math.round(goal / 60))} · ${fmtClock(spent)} done`
+      : `over your ${fmtMinutes(Math.round(goal / 60))} goal · nice work`;
+    const done = Math.min(1, spent / goal);
+    const ring = document.getElementById("foProgress");
+    ring.setAttribute("stroke-dashoffset", String(RING_C * (1 - done)));
+    ring.classList.toggle("over", left < 0);
+  }
+  const item = items.find((i) => i.id === focusState.itemId);
+  document.title = `${focusState.running ? "⏱" : "❚❚"} ${left >= 0 ? fmtClock(left) : "+" + fmtClock(-left)} · ${item?.title || "Focus"}`;
+  // One heads-up when the planned time is up.
+  if (left <= 0 && focusState.running && !focusState.alerted) {
+    focusState.alerted = true;
+    saveFocus();
+    if (typeof notificationsOn === "function" && notificationsOn()) notify("Session time is up", `${item?.title || "Your session"}: take a break or keep going.`);
+  }
+}
+setInterval(tickFocus, 1000);
+
+document.addEventListener("keydown", (e) => {
+  if (!focusState?.big || document.getElementById("modal")) return;
+  if (e.key === "Escape") setFocusBig(false);
+  if (e.key === " " && e.target === document.body) { e.preventDefault(); (focusState.running ? pauseFocus : resumeFocus)(); }
+});
 
 // ---------- "Right now" card ----------
 
@@ -519,6 +634,7 @@ function renderRightNow(now) {
     clock.id = "focusClock";
     ctl.append(
       clock,
+      button("⤢ Full screen", () => setFocusBig(true)),
       button(focusState.running ? "Pause" : "Resume", focusState.running ? pauseFocus : resumeFocus),
       button(target.block ? "✓ Session done" : "✓ Log time", () => finishFocus(false)),
       button("✓ Assignment finished", () => finishFocus(true)),

@@ -263,6 +263,36 @@
     .sched-row input { font: inherit; font-size: 14px; min-width: 0; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
     .toggle-row { display: flex; gap: 8px; align-items: center; font-size: 14px; }
     @media (max-width: 600px) { .sched-row, .sched-row.same { grid-template-columns: 1fr 1fr; } .sched-row.head { display: none; } }
+    /* Full-screen focus timer */
+    .focus-overlay { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+      background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      animation: fo-in .25s ease-out; overflow-y: auto; }
+    .focus-overlay.no-anim { animation: none; }
+    @keyframes fo-in { from { opacity: 0; transform: scale(.98); } }
+    .fo-card { position: relative; width: 100%; max-width: 520px; background: var(--card); border: 1px solid var(--border); border-radius: 24px;
+      padding: 28px 28px 22px; text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,.25);
+      background-image: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--c) 16%, transparent), transparent 60%); }
+    .fo-min { position: absolute; top: 14px; right: 14px; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
+    .fo-head { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 18px; }
+    .fo-title { font-size: 24px; font-weight: 800; color: var(--text); text-decoration: none; line-height: 1.2; }
+    a.fo-title:hover { text-decoration: underline; }
+    .fo-meta { font-size: 14px; color: var(--muted); }
+    .fo-ring { position: relative; width: min(300px, 70vw); aspect-ratio: 1; margin: 0 auto 22px; }
+    .fo-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .fo-track { fill: none; stroke: var(--later-bg); stroke-width: 12; }
+    .fo-progress { fill: none; stroke: var(--c); stroke-width: 12; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+    .fo-progress.over { stroke: var(--done); }
+    .fo-ring.paused .fo-progress { opacity: .45; }
+    .fo-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .fo-time { font-size: clamp(44px, 12vw, 68px); font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--text); }
+    .fo-ring.paused .fo-time { animation: fo-blink 1.6s ease-in-out infinite; }
+    @keyframes fo-blink { 50% { opacity: .35; } }
+    .fo-label { font-size: 13px; color: var(--muted); margin-top: 4px; max-width: 70%; }
+    .fo-controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+    .fo-controls button { padding: 10px 16px; border-radius: 12px; }
+    .fo-main { background: var(--c); border-color: var(--c); color: #fff; font-weight: 700; min-width: 120px; }
+    .fo-cancel { margin-top: 14px; color: var(--muted); }
+    @media (prefers-reduced-motion: reduce) { .focus-overlay, .fo-progress, .fo-ring.paused .fo-time { animation: none; transition: none; } }
     .hidden { display: none !important; }
     code { background: var(--later-bg); padding: 1px 5px; border-radius: 4px; }
   </style>
