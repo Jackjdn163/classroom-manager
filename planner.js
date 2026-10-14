@@ -474,28 +474,7 @@ function openPlanSettings() {
   const r5 = el("div", "field-row");
   r5.append(field("Daily study target (school days)", target), field("Study session reminders", lead));
 
-  // Class colors
-  const colorInputs = [];
-  const colors = el("div", "color-grid");
-  for (const c of [...new Set([...items.map((i) => i.course), ...scheduleClassNames()])].sort()) {
-    const input = inputEl("color", classColor(c));
-    colorInputs.push([c, input]);
-    const label = el("label", "color-pick");
-    label.append(input, " " + c);
-    colors.append(label);
-  }
-
-  // Backup and restore
-  const backup = el("div", "field-row align-end");
-  const exp = button("⬇ Download backup", exportBackup);
-  exp.type = "button";
-  const imp = inputEl("file", null, { accept: "application/json,.json" });
-  imp.onchange = () => imp.files[0] && importBackup(imp.files[0]);
-  backup.append(exp, field("Restore from a backup file", imp));
-
   form.append(field("School days", days), r1, offRow, offList, r2, r3, r4, r5);
-  if (colorInputs.length) form.append(el("h4", "", "Class colors"), colors);
-  form.append(el("h4", "", "Backup"), el("p", "sub", "Your own assignments, plan, settings, checklists and study history are saved only in this browser. Download a backup to keep them safe or move them to another device."), backup);
   const actions = el("div", "modal-actions");
   const reset = button("Reset to defaults", () => {
     PLAN = { ...PLAN_DEFAULTS };
@@ -528,14 +507,10 @@ function openPlanSettings() {
       daysOff,
     };
     savePlanSettings();
-    for (const [c, input] of colorInputs) {
-      if (input.value !== classColor(c) || classColors[c]) classColors[c] = input.value;
-    }
-    saveJSON("classColors", classColors);
     closeModal();
     render();
   };
-  openModal("Settings", form, { wide: true });
+  showPanel("Study hours", form, { wide: true });
 }
 
 function settingsSummary() {
@@ -557,7 +532,7 @@ function renderPlanBar(now) {
     render();
   });
   make.classList.add("primary");
-  top.append(make, button("+ Study session", () => openBlockEditor()), button(`Busy times${busyTimes.length ? ` (${busyTimes.length})` : ""}`, openBusyTimes), button("⚙ Settings", openPlanSettings));
+  top.append(make, button("+ Study session", () => openBlockEditor()), button(`Busy times${busyTimes.length ? ` (${busyTimes.length})` : ""}`, openBusyTimes), button("⚙ Settings", () => setView("settings")));
   if (typeof calendarSyncButton === "function") top.append(calendarSyncButton());
   bar.append(top);
 

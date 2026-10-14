@@ -430,6 +430,17 @@ function render() {
   $("sWeek").textContent = open.filter((i) => i.tier === "urgent" || i.tier === "soon").length;
   $("sOpen").textContent = open.length;
 
+  // Settings is its own page: hide the dashboard and show every setting in one place.
+  const onSettings = view === "settings";
+  document.body.classList.toggle("on-settings", onSettings);
+  $("settingsBtn").classList.toggle("active", onSettings);
+  if (onSettings) {
+    document.body.classList.remove("wide");
+    renderSettingsPage();
+    renderFocusOverlay();
+    $("app").classList.remove("hidden");
+    return;
+  }
   document.body.classList.toggle("wide", view === "calendar" && calMode === "week");
   renderRightNow(now);
   renderFocusOverlay();
@@ -712,12 +723,17 @@ function fmtTime(d) {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+let lastView = "list"; // where "← Back" from Settings goes
 function setView(v) {
+  if (v !== "settings") {
+    lastView = v;
+    try { localStorage.setItem("view", v); } catch {}
+  }
   view = v;
-  try { localStorage.setItem("view", v); } catch {}
   $("listViewBtn").classList.toggle("active", v === "list");
   $("calViewBtn").classList.toggle("active", v === "calendar");
-  if (hasData()) render();
+  if (hasData() || v === "settings") render();
+  if (v === "settings") window.scrollTo(0, 0);
 }
 
 function hasData() {
@@ -907,6 +923,7 @@ $("signOutBtn").onclick = signOut;
 $("demoBtn").onclick = loadDemo;
 $("addBtn").onclick = () => openAssignmentForm();
 $("notifyBtn").onclick = toggleNotifications;
+$("settingsBtn").onclick = () => setView(view === "settings" ? lastView : "settings");
 updateNotifyButton();
 $("listViewBtn").onclick = () => setView("list");
 $("calViewBtn").onclick = () => setView("calendar");
@@ -934,7 +951,7 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catc
 
 // Keep the "due in" countdowns and missing status fresh if the tab stays open.
 setInterval(() => {
-  if (!hasData()) return;
+  if (!hasData() || view === "settings") return; // don't wipe what you're typing in Settings
   render();
   checkReminders();
 }, 60e3);

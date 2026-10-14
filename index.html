@@ -293,6 +293,28 @@
     .fo-main { background: var(--c); border-color: var(--c); color: #fff; font-weight: 700; min-width: 120px; }
     .fo-cancel { margin-top: 14px; color: var(--muted); }
     @media (prefers-reduced-motion: reduce) { .focus-overlay, .fo-progress, .fo-ring.paused .fo-time { animation: none; transition: none; } }
+    /* Settings page */
+    #settingsPage { display: none; }
+    body.on-settings #settingsPage { display: grid; }
+    body.on-settings #rightNow, body.on-settings #planBar, body.on-settings .stats, body.on-settings .controls,
+    body.on-settings #lists, body.on-settings #calendar { display: none !important; }
+    #settingsBtn.active { border-color: var(--accent); color: var(--accent); }
+    .settings-page { margin-top: 20px; grid-template-columns: 190px minmax(0, 1fr); gap: 24px; align-items: start; }
+    .settings-head { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .settings-head h2 { margin: 0; font-size: 24px; text-transform: none; letter-spacing: 0; color: var(--text); }
+    .settings-nav { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 2px; }
+    .settings-nav button { border: 0; background: transparent; text-align: left; padding: 8px 10px; border-radius: 8px; color: var(--muted); }
+    .settings-nav button:hover { background: var(--card); color: var(--text); }
+    .settings-sections { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+    .settings-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; scroll-margin-top: 16px; }
+    .settings-card > h3 { margin: 0 0 4px; font-size: 18px; }
+    .settings-card > .sub:first-of-type { margin: 0 0 14px; }
+    .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    @media (max-width: 760px) {
+      .settings-page { grid-template-columns: minmax(0, 1fr); }
+      .settings-nav { position: static; flex-direction: row; overflow-x: auto; gap: 4px; }
+      .settings-nav button { white-space: nowrap; background: var(--card); }
+    }
     .hidden { display: none !important; }
     code { background: var(--later-bg); padding: 1px 5px; border-radius: 4px; }
   </style>
@@ -307,6 +329,7 @@
     <div class="header-buttons">
       <button id="addBtn">+ Add assignment</button>
       <button id="notifyBtn">🔕 Reminders off</button>
+      <button id="settingsBtn">⚙ Settings</button>
       <button id="demoBtn">Try demo</button>
       <button id="signInBtn" class="primary">Sign in with Google</button>
       <button id="refreshBtn" class="hidden">Refresh</button>
@@ -338,6 +361,7 @@
     </div>
     <div id="lists"></div>
     <div id="calendar" class="hidden"></div>
+    <div id="settingsPage" class="settings-page"></div>
   </section>
 </main>
 

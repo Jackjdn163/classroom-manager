@@ -115,6 +115,10 @@ In Google Cloud → *APIs & Services → Library*, enable: **Google Classroom AP
 
 Open https://classroommanager.site in **Google Chrome**, then click the install icon at the right end of the address bar (or ⋮ menu → *Cast, save and share → Install page as app…*). It gets its own window, Dock icon and Launchpad entry, and opens with your saved data even offline.
 
+## Settings page
+
+Click **⚙ Settings** (top of the page, or in the plan) for one place with every setting: **Study hours**, **Class schedule**, **Busy times**, which **Google Calendars** to show, **Reminders**, **Google account & sync** (sign in/out, Sync to Google Calendar, import Google Tasks), **Class colors**, and **Backup & restore**. Use the menu on the left to jump to a section and **← Back** to return.
+
 ## Backups
 
 Your own assignments, plan, settings, checklists, busy times and study history live only in this browser. In **⚙ Settings → Backup**, download a backup file, and restore it on another device or browser.

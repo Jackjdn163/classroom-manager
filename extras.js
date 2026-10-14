@@ -213,7 +213,7 @@ function openBusyTimes() {
   };
 
   wrap.append(list, el("h4", "", "Add a busy time"), form);
-  openModal("Busy times", wrap, { wide: true });
+  showPanel("Busy times", wrap, { wide: true });
 }
 
 // ---------- Class colors ----------
@@ -674,4 +674,117 @@ async function importBackup(file) {
   } catch (e) {
     showMessage("Couldn't restore the backup: " + e.message, true);
   }
+}
+
+// ---------- Settings page ----------
+
+// Settings windows show as a section on the Settings page while it's being drawn,
+// and as a pop-up window everywhere else.
+let panelTarget = null;
+function showPanel(title, content, opts) {
+  if (panelTarget) return panelTarget.append(content);
+  if (view === "settings") return render(); // refresh the page in place (e.g. after adding a busy time)
+  openModal(title, content, opts);
+}
+
+const SETTINGS_SECTIONS = [
+  ["hours", "Study hours", "School days and times, bedtime, daily target, session length and reminder timing.", () => openPlanSettings()],
+  ["schedule", "Class schedule", "Your classes, A/B rotation, lunch and bus. Shown in the Week view.", () => openScheduleEditor()],
+  ["busy", "Busy times", "Practices, jobs and appointments. The plan works around them.", () => openBusyTimes()],
+  ["calendars", "Google Calendars", "Which of your calendars show up and get planned around.", () => renderCalPanel()],
+  ["reminders", "Reminders", "Notifications while the app is open.", () => remindersSettings()],
+  ["google", "Google account & sync", "Sign-in, syncing your plan to Google Calendar, and importing Google Tasks.", () => googleSettings()],
+  ["colors", "Class colors", "The color for each class across the app.", () => classColorsSettings()],
+  ["backup", "Backup & restore", "Move your own assignments, plan, settings and history to another device.", () => backupSettings()],
+];
+
+function renderSettingsPage() {
+  const page = $("settingsPage");
+  page.innerHTML = "";
+  const head = el("div", "settings-head");
+  head.append(el("h2", "", "Settings"), button("← Back", () => setView(lastView)));
+  const nav = el("nav", "settings-nav");
+  nav.setAttribute("aria-label", "Settings sections");
+  const sections = el("div", "settings-sections");
+  for (const [id, title, blurb, build] of SETTINGS_SECTIONS) {
+    const sec = el("section", "settings-card");
+    sec.id = "set-" + id;
+    sec.append(el("h3", "", title), el("p", "sub", blurb));
+    panelTarget = sec;
+    try {
+      const out = build();
+      if (out instanceof Element) sec.append(out);
+    } finally {
+      panelTarget = null;
+    }
+    sections.append(sec);
+    nav.append(button(title, () => sec.scrollIntoView({ behavior: "smooth", block: "start" })));
+  }
+  page.append(head, nav, sections);
+}
+
+function remindersSettings() {
+  const wrap = el("div", "settings-actions");
+  const on = notificationsOn();
+  const b = button(on ? "🔔 Reminders are on · turn off" : "🔕 Turn on reminders", async () => { await toggleNotifications(); render(); });
+  if (!on) b.classList.add("primary");
+  wrap.append(b, el("span", "sub", `Before study sessions (${PLAN.reminderLeadMin ? PLAN.reminderLeadMin + " min, change it in Study hours" : "when they start"}), and 24 hours and 1 hour before things are due.`));
+  return wrap;
+}
+
+function googleSettings() {
+  const wrap = el("div", "form");
+  const status = el("p", "sub", accessToken ? "Signed in to Google." : "Not signed in. Your saved data still shows; sign in to refresh it.");
+  const row = el("div", "settings-actions");
+  row.append(accessToken ? button("Refresh from Google", () => load()) : button("Sign in with Google", () => signIn()));
+  if (accessToken || sourceItems.length) row.append(button("Sign out", signOut));
+  const row2 = el("div", "settings-actions");
+  row2.append(calendarSyncButton(), button("Import from Google Tasks…", () => openTasksImport()));
+  const last = loadJSON("lastSync", null);
+  wrap.append(status, row, row2, el("p", "sub", last ? `Last synced to Google Calendar ${fmtDate(new Date(last))}.` : "Sync copies your upcoming study sessions into a “Study Plan” calendar with reminders."));
+  return wrap;
+}
+
+function classColorsSettings() {
+  const names = [...new Set([...items.map((i) => i.course), ...scheduleClassNames()])].sort();
+  if (!names.length) return el("p", "sub", "Your classes will show up here once you sign in or add assignments.");
+  const form = el("form", "form");
+  const inputs = [];
+  const grid = el("div", "color-grid");
+  for (const c of names) {
+    const input = inputEl("color", classColor(c));
+    inputs.push([c, input]);
+    const label = el("label", "color-pick");
+    label.append(input, " " + c);
+    grid.append(label);
+  }
+  const actions = el("div", "modal-actions");
+  const reset = button("Reset colors", () => {
+    for (const k of Object.keys(classColors)) delete classColors[k];
+    saveJSON("classColors", classColors);
+    render();
+  });
+  reset.type = "button";
+  reset.classList.add("danger");
+  const save = el("button", "primary", "Save colors");
+  save.type = "submit";
+  actions.append(reset, save);
+  form.append(grid, actions);
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    for (const [c, input] of inputs) if (input.value !== classColor(c) || classColors[c]) classColors[c] = input.value;
+    saveJSON("classColors", classColors);
+    render();
+  };
+  return form;
+}
+
+function backupSettings() {
+  const row = el("div", "field-row align-end");
+  const exp = button("⬇ Download backup", exportBackup);
+  exp.type = "button";
+  const imp = inputEl("file", null, { accept: "application/json,.json" });
+  imp.onchange = () => imp.files[0] && importBackup(imp.files[0]);
+  row.append(exp, field("Restore from a backup file", imp));
+  return row;
 }

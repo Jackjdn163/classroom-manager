@@ -64,7 +64,7 @@ function scheduleClassNames() {
 
 // ---------- Week grid ----------
 
-const HOUR_PX = 64;
+const HOUR_PX = 96;
 let weekScroll = null; // keeps your scroll position when the page refreshes itself
 
 function renderWeekGrid(first, { byDay, evByDay, planByDay, busyByDay, now }) {
@@ -373,5 +373,5 @@ function openScheduleEditor() {
     closeModal();
     render();
   };
-  openModal("Class schedule", wrap, { wide: true });
+  showPanel("Class schedule", wrap, { wide: true });
 }

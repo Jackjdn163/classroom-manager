@@ -1,6 +1,6 @@
 // Lets the installed app open offline (showing your saved data).
 // Always tries the network first, so updates to the site show up right away.
-const CACHE = "classroom-priorities-v5";
+const CACHE = "classroom-priorities-v6";
 const SHELL = ["./", "index.html", "app.js", "manual.js", "planner.js", "extras.js", "schedule.js", "google.js", "notify.js", "config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
