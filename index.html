@@ -436,6 +436,11 @@
     .setup-summary b { font-size: var(--fs-sm); }
     @media (max-width: 600px) { .setup-card { padding: var(--s4); } .setup-summary li { grid-template-columns: 1fr; gap: 2px; } .setup-step h2 { font-size: var(--fs-xl); } }
 
+    .app-footer { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; margin-top: 48px; font-size: var(--fs-sm); }
+    .app-footer a { color: var(--muted); text-decoration: none; }
+    .app-footer a:hover { color: var(--text); text-decoration: underline; }
+    body.on-setup .app-footer { margin-top: 24px; }
+
     /* ================= Responsive ================= */
     @media (max-width: 760px) {
       .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -497,7 +502,7 @@
   <div id="welcome" class="card welcome hidden">
     <img src="icons/icon-192.png" alt="">
     <h2>Your homework, sorted</h2>
-    <p>Sign in with the Google account you use for Classroom to see every assignment ranked, planned and on your calendar.</p>
+    <p>Sign in with the Google account you use for Classroom to see every assignment ranked, planned and on your calendar. Your data stays in your browser. <a href="privacy.html">Privacy policy</a></p>
     <div class="actions">
       <button id="welcomeSignIn" class="primary">Sign in with Google</button>
       <button id="welcomeDemo">Try demo</button>
@@ -535,6 +540,10 @@
     <div id="settingsPage" class="settings-page"></div>
     <div id="setupPage" class="setup-page"></div>
   </section>
+
+  <footer class="app-footer">
+    <a href="about.html">About</a><a href="privacy.html">Privacy policy</a><a href="terms.html">Terms of service</a><a href="mailto:jjordan@ucvts.org">Contact</a>
+  </footer>
 </main>
 
 <script src="config.js"></script>
