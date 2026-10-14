@@ -64,7 +64,38 @@ function scheduleClassNames() {
 
 // ---------- Week grid ----------
 
-const HOUR_PX = 96;
+// Zoom: pixels per hour in the Week view. − / + buttons, or pinch / ⌘-scroll on the grid.
+const ZOOM_LEVELS = [40, 56, 72, 96, 120, 150, 190];
+let HOUR_PX = (() => { try { const v = Number(localStorage.getItem("weekZoom")); return ZOOM_LEVELS.includes(v) ? v : 96; } catch { return 96; } })();
+
+// dir: +1 zoom in, -1 zoom out. Keeps the time at anchorY (px from the top of the grid) in place.
+function zoomWeek(dir, anchorY) {
+  const i = ZOOM_LEVELS.indexOf(HOUR_PX);
+  const next = ZOOM_LEVELS[Math.max(0, Math.min(ZOOM_LEVELS.length - 1, (i < 0 ? 3 : i) + dir))];
+  if (next === HOUR_PX) return;
+  const sc = document.querySelector(".wk-scroll");
+  if (sc) {
+    const a = anchorY ?? sc.clientHeight / 2;
+    weekScroll = { top: Math.max(0, ((sc.scrollTop + a) * next) / HOUR_PX - a), left: sc.scrollLeft };
+  }
+  HOUR_PX = next;
+  try { localStorage.setItem("weekZoom", String(next)); } catch {}
+  render();
+}
+
+function zoomControls() {
+  const seg = el("div", "seg zoom");
+  seg.setAttribute("role", "group");
+  seg.setAttribute("aria-label", "Zoom the week");
+  const out = button("−", () => zoomWeek(-1), "Zoom out (less space between hours)");
+  const inn = button("+", () => zoomWeek(1), "Zoom in (more space between hours)");
+  out.title = "Zoom out · or pinch / ⌘-scroll on the grid";
+  inn.title = "Zoom in · or pinch / ⌘-scroll on the grid";
+  out.disabled = HOUR_PX === ZOOM_LEVELS[0];
+  inn.disabled = HOUR_PX === ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+  seg.append(out, inn);
+  return seg;
+}
 let weekScroll = null; // keeps your scroll position when the page refreshes itself
 
 function renderWeekGrid(first, { byDay, evByDay, planByDay, busyByDay, now }) {
@@ -186,6 +217,17 @@ function renderWeekGrid(first, { byDay, evByDay, planByDay, busyByDay, now }) {
 
   scroller.append(grid);
   scroller.onscroll = () => (weekScroll = { top: scroller.scrollTop, left: scroller.scrollLeft });
+  // Pinch on a trackpad (sent as ctrl + wheel) or ⌘/Ctrl + scroll zooms the hours.
+  let wheel = 0;
+  scroller.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    wheel += e.deltaY;
+    if (Math.abs(wheel) < 40) return;
+    const anchor = e.clientY - scroller.getBoundingClientRect().top;
+    zoomWeek(wheel < 0 ? 1 : -1, anchor);
+    wheel = 0;
+  }, { passive: false });
   // Restore scroll, or start an hour before now (this week) / at the first class.
   setTimeout(() => {
     if (weekScroll) {

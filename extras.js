@@ -683,7 +683,7 @@ async function importBackup(file) {
 let panelTarget = null;
 function showPanel(title, content, opts) {
   if (panelTarget) return panelTarget.append(content);
-  if (view === "settings") return render(); // refresh the page in place (e.g. after adding a busy time)
+  if (view === "settings" || view === "setup") return render(); // refresh the page in place (e.g. after adding a busy time)
   openModal(title, content, opts);
 }
 
@@ -702,7 +702,9 @@ function renderSettingsPage() {
   const page = $("settingsPage");
   page.innerHTML = "";
   const head = el("div", "settings-head");
-  head.append(el("h2", "", "Settings"), button("← Back", () => setView(lastView)));
+  const headBtns = el("div", "settings-actions");
+  headBtns.append(button("Run setup again", startSetup), button("← Back", () => setView(lastView)));
+  head.append(el("h2", "", "Settings"), headBtns);
   const nav = el("nav", "settings-nav");
   nav.setAttribute("aria-label", "Settings sections");
   const sections = el("div", "settings-sections");
@@ -740,8 +742,15 @@ function googleSettings() {
   if (accessToken || sourceItems.length) row.append(button("Sign out", signOut));
   const row2 = el("div", "settings-actions");
   row2.append(calendarSyncButton(), button("Import from Google Tasks…", () => openTasksImport()));
+  const auto = selectEl([[0, "Off"], [5, "Every 5 minutes"], [10, "Every 10 minutes"], [15, "Every 15 minutes"], [30, "Every 30 minutes"], [60, "Every hour"]], autoRefreshMinutes());
+  auto.onchange = () => {
+    try { localStorage.setItem("autoRefreshMin", auto.value); } catch {}
+    autoRefreshTick();
+  };
+  const autoField = field("Auto-refresh from Google", auto);
+  autoField.style.maxWidth = "280px";
   const last = loadJSON("lastSync", null);
-  wrap.append(status, row, row2, el("p", "sub", last ? `Last synced to Google Calendar ${fmtDate(new Date(last))}.` : "Sync copies your upcoming study sessions into a “Study Plan” calendar with reminders."));
+  wrap.append(status, row, autoField, el("p", "sub", "Also refreshes when you come back to the app. Needs you signed in; Google sign-ins last about an hour."), row2, el("p", "sub", last ? `Last synced to Google Calendar ${fmtDate(new Date(last))}.` : "Sync copies your upcoming study sessions into a “Study Plan” calendar with reminders."));
   return wrap;
 }
 

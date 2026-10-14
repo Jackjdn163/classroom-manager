@@ -96,14 +96,17 @@ function signOut() {
 
 // Google access tokens last ~1 hour. Keeping it in sessionStorage means a page refresh
 // stays signed in, but closing the tab signs you out.
+let tokenExp = 0; // when the current Google sign-in runs out
 function saveToken(token, expiresIn, scopes) {
-  try { sessionStorage.setItem("token", JSON.stringify({ token, scopes, exp: Date.now() + (expiresIn - 60) * 1000 })); } catch {}
+  tokenExp = Date.now() + (expiresIn - 60) * 1000;
+  try { sessionStorage.setItem("token", JSON.stringify({ token, scopes, exp: tokenExp })); } catch {}
 }
 function restoreToken() {
   try {
     const t = JSON.parse(sessionStorage.getItem("token"));
     if (t && t.exp > Date.now()) {
       tokenScopes = new Set(t.scopes || []);
+      tokenExp = t.exp;
       return t.token;
     }
   } catch {}
@@ -138,13 +141,20 @@ async function listAll(path, key, params = {}) {
 
 // ---------- Loading data ----------
 
-async function load() {
-  setStatus("Loading your classes…");
+// quiet: an automatic background refresh — no loading text, and messages stay as they are.
+let loading = false;
+let lastLoadAt = 0;
+async function load({ quiet = false } = {}) {
+  if (loading) return;
+  loading = true;
+  if (!quiet) {
+    setStatus("Loading your classes…");
+    hideMessage();
+  }
   $("refreshBtn").disabled = true;
-  hideMessage();
   try {
     const courses = await listAll("courses", "courses", { studentId: "me", courseStates: "ACTIVE" });
-    setStatus(`Loading assignments from ${courses.length} classes…`);
+    if (!quiet) setStatus(`Loading assignments from ${courses.length} classes…`);
 
     const skipped = [];
     const perCourse = await Promise.all(courses.map(async (course) => {
@@ -173,25 +183,51 @@ async function load() {
 
     render();
     saveCache();
-    setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${courses.length} classes · ${sourceItems.length} assignments`);
+    lastLoadAt = Date.now();
+    const every = autoRefreshMinutes();
+    setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${courses.length} classes · ${sourceItems.length} assignments${every ? ` · refreshes every ${every} min` : ""}`);
     const problems = [];
     if (skipped.length) problems.push("Couldn't read assignments from: " + skipped.join(", "));
     if (calError) problems.push(calendarErrorText(calError));
-    if (problems.length) showMessage(problems.join("<br><br>"));
+    if (problems.length && !quiet) showMessage(problems.join("<br><br>"));
   } catch (e) {
     if (e.status === 401) {
       accessToken = null;
       try { sessionStorage.removeItem("token"); } catch {}
-      showMessage("Your sign-in expired. Click Refresh to sign in again.", true);
+      if (quiet) setStatus("Your Google sign-in expired, so auto-refresh paused. Open the profile menu → Refresh to sign in again.");
+      else showMessage("Your sign-in expired. Click Refresh to sign in again.", true);
+    } else if (quiet) {
+      setStatus(`Couldn't refresh just now (${e.message}). Will try again.`);
     } else if (e.status === 403) {
       showMessage("Google blocked access: " + e.message + "<br><br>If this is a school account, your school may block outside apps from reading Classroom. See README.md → Troubleshooting.", true);
     } else {
       showMessage("Something went wrong: " + e.message, true);
     }
-    setStatus("");
+    if (!quiet) setStatus("");
   } finally {
+    loading = false;
     $("refreshBtn").disabled = false;
   }
+}
+
+// ---------- Auto-refresh ----------
+
+function autoRefreshMinutes() {
+  try { const v = localStorage.getItem("autoRefreshMin"); return v === null ? 10 : Number(v); } catch { return 10; }
+}
+
+// Runs every 30 seconds and when you come back to the tab.
+function autoRefreshTick() {
+  const every = autoRefreshMinutes();
+  if (!every || loading || document.hidden || view === "settings" || view === "setup") return;
+  if (accessToken && tokenExp && Date.now() > tokenExp) {
+    // Google sign-ins last about an hour; the browser won't let us sign in again without a click.
+    accessToken = null;
+    try { sessionStorage.removeItem("token"); } catch {}
+    setStatus("Your Google sign-in expired, so auto-refresh paused. Open the profile menu → Refresh to sign in again.");
+    return;
+  }
+  if (accessToken && Date.now() - lastLoadAt >= every * 60e3) load({ quiet: true });
 }
 
 // ---------- Google Calendar ----------
@@ -439,12 +475,14 @@ function render() {
   $("sOpen").textContent = open.length;
 
   // Settings is its own page: hide the dashboard and show every setting in one place.
-  const onSettings = view === "settings";
-  document.body.classList.toggle("on-settings", onSettings);
-  $("settingsBtn").classList.toggle("active", onSettings);
+  const onSettings = view === "settings" || view === "setup";
+  document.body.classList.toggle("on-settings", view === "settings");
+  document.body.classList.toggle("on-setup", view === "setup");
+  $("settingsBtn").classList.toggle("active", view === "settings");
   if (onSettings) {
     document.body.classList.remove("wide");
-    renderSettingsPage();
+    if (view === "setup") renderSetup();
+    else renderSettingsPage();
     renderFocusOverlay();
     $("app").classList.remove("hidden");
     return;
@@ -523,6 +561,7 @@ function renderCalendar(visible, now) {
     modeButton("Week", "week"),
   );
   const nav = el("div", "cal-right");
+  if (week) nav.append(zoomControls());
   nav.append(modes, dropdown("⋯", [
     [`Calendars${shownCals.size ? ` (${calendars.filter((c) => shownCals.has(c.id)).length})` : ""}${calPanelOpen ? " ✓" : ""}`, () => {
       calPanelOpen = !calPanelOpen;
@@ -735,14 +774,14 @@ function fmtTime(d) {
 
 let lastView = "list"; // where "← Back" from Settings goes
 function setView(v) {
-  if (v !== "settings") {
+  if (v !== "settings" && v !== "setup") {
     lastView = v;
     try { localStorage.setItem("view", v); } catch {}
   }
   view = v;
   $("listViewBtn").classList.toggle("active", v === "list");
   $("calViewBtn").classList.toggle("active", v === "calendar");
-  if (hasData() || v === "settings") render();
+  if (hasData() || v === "settings" || v === "setup") render();
   if (v === "settings") window.scrollTo(0, 0);
 }
 
@@ -752,7 +791,7 @@ function hasData() {
 
 // Welcome card when there's nothing to show yet (not signed in, no demo, no own assignments).
 function updateWelcome() {
-  $("welcome").classList.toggle("hidden", hasData() || !!accessToken || view === "settings");
+  $("welcome").classList.toggle("hidden", hasData() || !!accessToken || view === "settings" || view === "setup");
 }
 
 // ---------- Small dropdown menus ----------
@@ -1066,8 +1105,12 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catc
 
 // Keep the "due in" countdowns and missing status fresh if the tab stays open.
 setInterval(() => {
-  if (!hasData() || view === "settings") return; // don't wipe what you're typing in Settings
+  if (!hasData() || view === "settings" || view === "setup") return; // don't wipe what you're typing in Settings
   render();
   checkReminders();
 }, 60e3);
 setTimeout(checkReminders, 3000);
+setInterval(autoRefreshTick, 30e3);
+// First visit: walk through setup once.
+if (!setupIsDone()) setView("setup");
+document.addEventListener("visibilitychange", autoRefreshTick);
